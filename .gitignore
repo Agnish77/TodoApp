@@ -1,0 +1,7 @@
+env/
+__pycache__/
+*.pyc
+instance/
+.project
+.vscode/
+project.db

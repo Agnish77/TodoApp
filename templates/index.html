@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block body %}
+<nav class="navbar navbar-expand-lg bg-body-tertiary">
+  <div class="container-fluid">
+    <a class="navbar-brand" href="#">Todo</a>
+  </div>
+</nav>
+
+<div class="container my-4">
+  <h2>Add a Todo</h2>
+
+  <form action="/" method="POST">
+    <div class="mb-3">
+      <label class="form-label">Todo Title</label>
+      <input type="text" class="form-control" name="title" required>
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label">Description</label>
+      <input type="text" class="form-control" name="desc" required>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Submit</button>
+  </form>
+</div>
+
+<div class="container my-3">
+  <form method="GET" class="d-flex mb-3">
+    <input class="form-control me-2" type="search" name="search" 
+    placeholder="Search Todos" value="{{search}}">
+    <button class="btn btn-outline-primary">Search</button>
+
+  </form>
+
+
+
+  <h2>Todos</h2>
+
+  <table class="table table-striped">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Title</th>
+        <th>Description</th>
+        <th>Date</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+      
+    <tbody>
+      {% for todo in todos.items %}
+      <tr>
+
+        <th scope="row">{{ loop.index + (todos.page-1)*todos.per_page}}</th>
+        <td>{{ todo.title }}</td>
+        <td>{{ todo.desc }}</td>
+        <td>{{ todo.date_c.strftime('%d-%m-%Y') }}</td>
+        <td>
+          <a href="/update/{{ todo.id }}" class="btn btn-sm btn-warning">Edit</a>
+          <a href="/delete/{{ todo.id }}" class="btn btn-sm btn-danger"
+             onclick="return confirm('Are you sure?')">Delete</a>
+          <a href="/toggle/{{ todo.id }}" class="btn btn-sm btn-success">{% if todo.completed %}Undo{% else %}Done{% endif %}</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <nav>
+    <ul class="pagination">
+      {% if todos.has_prev %}
+        <li class="page-item">
+          <a class="page-link"
+             href="?page={{todos.prev_num }}&search={{search}}">
+            Previous
+          </a>
+        </li>
+      {% endif %}
+      {% if todos.has_next %}
+        <li class="page-item">
+          <a class="page-link"
+             href="?page={{todos.next_num }}&search={{search}}">
+            Next
+          </a>
+        </li>
+      {% endif %}
+    </ul>
+
+
+
+</div>
+
+
+
+{% endblock %}
