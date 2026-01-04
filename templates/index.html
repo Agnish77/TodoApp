@@ -1,94 +1,132 @@
 {% extends "base.html" %}
 {% block body %}
-<nav class="navbar navbar-expand-lg bg-body-tertiary">
-  <div class="container-fluid">
-    <a class="navbar-brand" href="#">Todo</a>
+
+<nav class="navbar navbar-dark bg-dark shadow-sm">
+  <div class="container">
+    <a class="navbar-brand fw-bold" href="#">📝 Todo App</a>
+    <span class="text-light small">Logged in as {{ current_user.username }}</span>
   </div>
 </nav>
 
-<div class="container my-4">
-  <h2>Add a Todo</h2>
+<div class="container my-5">
 
-  <form action="/" method="POST">
-    <div class="mb-3">
-      <label class="form-label">Todo Title</label>
-      <input type="text" class="form-control" name="title" required>
+  <!-- ADD TODO CARD -->
+  <div class="card shadow-sm mb-4">
+    <div class="card-body">
+      <h5 class="card-title mb-3">Add a Todo</h5>
+
+      <form action="/" method="POST">
+        <div class="row g-2">
+          <div class="col-md-4">
+            <input type="text" class="form-control" name="title" placeholder="Todo title" required>
+          </div>
+          <div class="col-md-6">
+            <input type="text" class="form-control" name="desc" placeholder="Description" required>
+          </div>
+          <div class="col-md-2 d-grid">
+            <button class="btn btn-primary">Add</button>
+          </div>
+        </div>
+      </form>
     </div>
+  </div>
 
-    <div class="mb-3">
-      <label class="form-label">Description</label>
-      <input type="text" class="form-control" name="desc" required>
+  <!-- SEARCH -->
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0">Your Todos</h4>
+
+    <form method="GET" class="d-flex">
+      <input class="form-control me-2" type="search" name="search"
+             placeholder="Search..." value="{{ search }}">
+      <button class="btn btn-outline-secondary">Search</button>
+    </form>
+  </div>
+
+  <!-- TODO TABLE -->
+  <div class="card shadow-sm">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>#</th>
+            <th>Title</th>
+            <th>Description</th>
+            <th>Status</th>
+            <th>Date</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {% for todo in todos.items %}
+          <tr>
+            <td>{{ loop.index + (todos.page-1)*todos.per_page }}</td>
+
+            <td class="fw-semibold">{{ todo.title }}</td>
+
+            <td class="text-muted">{{ todo.desc }}</td>
+
+            <td>
+              {% if todo.completed %}
+                <span class="badge bg-success">Done</span>
+              {% else %}
+                <span class="badge bg-warning text-dark">Pending</span>
+              {% endif %}
+            </td>
+
+            <td>{{ todo.date_c.strftime('%d %b %Y') }}</td>
+
+            <td class="text-end">
+              <a href="/toggle/{{ todo.id }}" class="btn btn-sm btn-outline-success">
+                {% if todo.completed %}Undo{% else %}Done{% endif %}
+              </a>
+              <a href="/update/{{ todo.id }}" class="btn btn-sm btn-outline-primary">Edit</a>
+              <a href="/delete/{{ todo.id }}"
+                 class="btn btn-sm btn-outline-danger"
+                 onclick="return confirm('Delete this todo?')">
+                Delete
+              </a>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="6" class="text-center text-muted py-4">
+              No todos found
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
+  </div>
 
-    <button type="submit" class="btn btn-primary">Submit</button>
-  </form>
-</div>
-
-<div class="container my-3">
-  <form method="GET" class="d-flex mb-3">
-    <input class="form-control me-2" type="search" name="search" 
-    placeholder="Search Todos" value="{{search}}">
-    <button class="btn btn-outline-primary">Search</button>
-
-  </form>
-
-
-
-  <h2>Todos</h2>
-
-  <table class="table table-striped">
-    <thead>
-      <tr>
-        <th>#</th>
-        <th>Title</th>
-        <th>Description</th>
-        <th>Date</th>
-        <th>Action</th>
-      </tr>
-    </thead>
-      
-    <tbody>
-      {% for todo in todos.items %}
-      <tr>
-
-        <th scope="row">{{ loop.index + (todos.page-1)*todos.per_page}}</th>
-        <td>{{ todo.title }}</td>
-        <td>{{ todo.desc }}</td>
-        <td>{{ todo.date_c.strftime('%d-%m-%Y') }}</td>
-        <td>
-          <a href="/update/{{ todo.id }}" class="btn btn-sm btn-warning">Edit</a>
-          <a href="/delete/{{ todo.id }}" class="btn btn-sm btn-danger"
-             onclick="return confirm('Are you sure?')">Delete</a>
-          <a href="/toggle/{{ todo.id }}" class="btn btn-sm btn-success">{% if todo.completed %}Undo{% else %}Done{% endif %}</a>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  <nav>
-    <ul class="pagination">
+  <!-- PAGINATION -->
+  <nav class="mt-4">
+    <ul class="pagination justify-content-center">
       {% if todos.has_prev %}
         <li class="page-item">
-          <a class="page-link"
-             href="?page={{todos.prev_num }}&search={{search}}">
-            Previous
+          <a class="page-link" href="?page={{ todos.prev_num }}&search={{ search }}">
+            ← Previous
           </a>
         </li>
       {% endif %}
+
+      <li class="page-item disabled">
+        <span class="page-link">
+          Page {{ todos.page }} of {{ todos.pages }}
+        </span>
+      </li>
+
       {% if todos.has_next %}
         <li class="page-item">
-          <a class="page-link"
-             href="?page={{todos.next_num }}&search={{search}}">
-            Next
+          <a class="page-link" href="?page={{ todos.next_num }}&search={{ search }}">
+            Next →
           </a>
         </li>
       {% endif %}
     </ul>
-
-
+  </nav>
 
 </div>
-
-
 
 {% endblock %}
