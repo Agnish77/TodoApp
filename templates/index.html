@@ -2,11 +2,23 @@
 {% block body %}
 
 <nav class="navbar navbar-dark bg-dark shadow-sm">
-  <div class="container">
+  <div class="container d-flex justify-content-between align-items-center">
+    
     <a class="navbar-brand fw-bold" href="#">📝 Todo App</a>
-    <span class="text-light small">Logged in as {{ current_user.username }}</span>
+
+    <div class="d-flex align-items-center gap-3">
+      <span class="text-light small">
+        Logged in as <strong>{{ current_user.username }}</strong>
+      </span>
+
+      <a href="/logout" class="btn btn-sm btn-outline-light">
+        Logout
+      </a>
+    </div>
+
   </div>
 </nav>
+
 
 <div class="container my-5">
 
