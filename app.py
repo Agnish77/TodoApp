@@ -35,8 +35,7 @@ login_manager.login_view = "login"
 
 # ---------------- DB INIT (CRITICAL) ----------------
 
-with app.app_context():
-    db.create_all()
+
 
 # ---------------- LOGIN ----------------
 
