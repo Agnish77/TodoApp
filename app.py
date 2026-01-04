@@ -18,9 +18,8 @@ basedir = os.path.abspath(os.path.dirname(__file__))
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "super-secret-key")
 
-app.config["SQLALCHEMY_DATABASE_URI"] = (
-    "sqlite:///" + os.path.join(basedir, "instance", "project.db")
-)
+app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL")
+
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 os.makedirs(os.path.join(basedir, "instance"), exist_ok=True)
