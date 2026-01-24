@@ -1,11 +1,13 @@
 from flask import Flask, render_template, request, redirect, jsonify
-from flask_sqlalchemy import SQLAlchemy
 from flask_login import (
     LoginManager, login_user, logout_user,
     login_required, current_user
 )
 from flask_bcrypt import Bcrypt
-from datetime import datetime
+from flask_jwt_extended import (
+    JWTManager, create_access_token,
+    jwt_required, get_jwt_identity
+)
 import os
 
 from data import db
@@ -13,16 +15,15 @@ from model import User, Todo
 
 # ---------------- CONFIG ----------------
 
-basedir = os.path.abspath(os.path.dirname(__file__))
-
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "super-secret-key")
 
 app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL")
-
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-os.makedirs(os.path.join(basedir, "instance"), exist_ok=True)
+app.config["JWT_SECRET_KEY"] = os.getenv(
+    "JWT_SECRET_KEY", "jwt-super-secret"
+)
 
 # ---------------- EXTENSIONS ----------------
 
@@ -33,9 +34,7 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
 
-# ---------------- DB INIT (CRITICAL) ----------------
-
-
+jwt = JWTManager(app)
 
 # ---------------- LOGIN ----------------
 
@@ -43,40 +42,88 @@ login_manager.login_view = "login"
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# ---------------- API ROUTES ----------------
+# =====================================================
+# ==================== API (JWT) ======================
+# =====================================================
 
-@app.route("/api/todos", methods=["GET"])
-@login_required
-def get_todos():
-    todos = Todo.query.filter_by(user_id=current_user.id).all()
-    return jsonify([
-        {
-            "id": t.id,
-            "title": t.title,
-            "desc": t.desc,
-            "completed": t.completed,
-            "created_at": t.date_c.strftime("%Y-%m-%d")
-        }
-        for t in todos
-    ])
-
-@app.route("/api/todos", methods=["POST"])
-@login_required
-def create_todo_api():
+@app.route("/api/login", methods=["POST"])
+def api_login():
     data = request.get_json()
     if not data:
+        return jsonify({"error": "Invalid JSON"}), 400
+
+    user = User.query.filter_by(
+        username=data.get("username")
+    ).first()
+
+    if not user or not bcrypt.check_password_hash(
+        user.password, data.get("password")
+    ):
+        return jsonify({"error": "Invalid credentials"}), 401
+
+    access_token = create_access_token(identity=user.id)
+    return jsonify({"access_token": access_token}), 200
+
+
+@app.route("/api/todos", methods=["GET"])
+@jwt_required()
+def get_todos():
+    user_id = get_jwt_identity()
+
+    page = request.args.get("page", 1, type=int)
+    limit = request.args.get("limit", 5, type=int)
+
+    pagination = Todo.query.filter_by(
+        user_id=user_id
+    ).order_by(
+        Todo.date_c.desc()
+    ).paginate(
+        page=page,
+        per_page=limit,
+        error_out=False
+    )
+
+    return jsonify({
+        "page": page,
+        "limit": limit,
+        "total": pagination.total,
+        "todos": [
+            {
+                "id": t.id,
+                "title": t.title,
+                "desc": t.desc,
+                "completed": t.completed,
+                "created_at": t.date_c.strftime("%Y-%m-%d")
+            }
+            for t in pagination.items
+        ]
+    }), 200
+
+
+@app.route("/api/todos", methods=["POST"])
+@jwt_required()
+def create_todo_api():
+    user_id = get_jwt_identity()
+    data = request.get_json()
+
+    if not data or not data.get("title"):
         return jsonify({"error": "Invalid JSON"}), 400
 
     todo = Todo(
         title=data.get("title"),
         desc=data.get("desc"),
-        user_id=current_user.id
+        user_id=user_id
     )
+
     db.session.add(todo)
     db.session.commit()
+
     return jsonify({"message": "Todo created"}), 201
 
-# ---------------- AUTH ----------------
+
+# =====================================================
+# ================= WEB (Flask-Login) =================
+# =====================================================
 
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
@@ -95,6 +142,7 @@ def signup():
 
     return render_template("signup.html")
 
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
@@ -110,13 +158,13 @@ def login():
 
     return render_template("login.html")
 
+
 @app.route("/logout")
 @login_required
 def logout():
     logout_user()
     return redirect("/login")
 
-# ---------------- WEB ROUTES ----------------
 
 @app.route("/", methods=["GET", "POST"])
 @login_required
@@ -143,22 +191,26 @@ def index():
 
     return render_template("index.html", todos=todos, search=search)
 
+
 @app.route("/delete/<int:id>")
 @login_required
 def delete(id):
     todo = Todo.query.filter_by(
-        id=id, user_id=current_user.id
+        id=id,
+        user_id=current_user.id
     ).first_or_404()
 
     db.session.delete(todo)
     db.session.commit()
     return redirect("/")
 
+
 @app.route("/update/<int:id>", methods=["GET", "POST"])
 @login_required
 def update(id):
     todo = Todo.query.filter_by(
-        id=id, user_id=current_user.id
+        id=id,
+        user_id=current_user.id
     ).first_or_404()
 
     if request.method == "POST":
@@ -169,11 +221,13 @@ def update(id):
 
     return render_template("update.html", todo=todo)
 
+
 @app.route("/toggle/<int:id>")
 @login_required
 def toggle(id):
     todo = Todo.query.filter_by(
-        id=id, user_id=current_user.id
+        id=id,
+        user_id=current_user.id
     ).first_or_404()
 
     todo.completed = not todo.completed
