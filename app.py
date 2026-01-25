@@ -1,4 +1,7 @@
 from datetime import timedelta
+from flask import flash
+
+
 from flask import Flask, render_template, request, redirect, jsonify
 from flask_login import (
     LoginManager, login_user, logout_user,
@@ -147,10 +150,9 @@ def signup():
         username=request.form["username"]
         existing_user = User.query.filter_by(username=username).first()
         if existing_user:
-            return render_template(
-                "signup.html",
-                error="Username already exists"
-            )
+            flash("Username already exists", "error")
+            return redirect("/signup")
+
 
         password = bcrypt.generate_password_hash(
             request.form["password"]
@@ -257,5 +259,4 @@ def toggle(id):
     todo.completed = not todo.completed
     db.session.commit()
     return redirect("/")
-with app.app_context():
-    db.create_all()
+
