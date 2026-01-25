@@ -172,15 +172,18 @@ def signup():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        user = User.query.filter_by(
-            username=request.form["username"]
-        ).first()
-
-        if user and bcrypt.check_password_hash(
-            user.password, request.form["password"]
-        ):
-            login_user(user)
-            return redirect("/")
+        username = request.form["username"]
+        password = request.form["password"]
+        user = User.query.filter_by(username=username).first()
+        if not user:
+            flash("Username does not exist. Please sign up.", "error")
+            return redirect("/signup")
+        if not bcrypt.check_password_hash(user.password, password):
+            flash("Incorrect password. Please try again.", "error")
+            return redirect("/login")
+        login_user(user)
+        flash("Logged in successfully!","Success")
+        return redirect("/")
 
     return render_template("login.html")
 
