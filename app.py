@@ -25,9 +25,12 @@ app.secret_key = os.getenv("SECRET_KEY", "super-secret-key")
 app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-app.config["JWT_SECRET_KEY"] = os.getenv(
-    "JWT_SECRET_KEY", "jwt-super-secret"
-)
+jwt_secret = os.getenv("JWT_SECRET_KEY")
+if not jwt_secret:
+    raise RuntimeError("JWT_SECRET_KEY is not set")
+
+app.config["JWT_SECRET_KEY"] = jwt_secret
+
 app.config["JWT_ACCESS_TOKEN_EXPIRES"]=timedelta(minutes=30)
 
 # ---------------- EXTENSIONS ----------------
