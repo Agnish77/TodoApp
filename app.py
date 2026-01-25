@@ -144,12 +144,20 @@ def create_todo_api():
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
     if request.method == "POST":
+        username=request.form["username"]
+        existing_user = User.query.filter_by(username=username).first()
+        if existing_user:
+            return render_template(
+                "signup.html",
+                error="Username already exists"
+            )
+
         password = bcrypt.generate_password_hash(
             request.form["password"]
         ).decode("utf-8")
 
         user = User(
-            username=request.form["username"],
+            username=username,
             password=password
         )
         db.session.add(user)
