@@ -1,7 +1,3 @@
-import pytest
-from app import app, db
-from model import User
-
 @pytest.fixture
 def client():
     app.config["TESTING"] = True
@@ -10,6 +6,7 @@ def client():
 
     with app.test_client() as client:
         with app.app_context():
+            db.drop_all()
             db.create_all()
 
             user = User(username="testuser")
@@ -18,3 +15,7 @@ def client():
             db.session.commit()
 
         yield client
+
+        with app.app_context():
+            db.session.remove()
+            db.drop_all()
