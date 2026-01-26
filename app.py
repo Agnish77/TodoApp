@@ -28,7 +28,11 @@ else:
 
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-jwt_secret = os.getenv("JWT_SECRET_KEY")
+app.config["JWT_SECRET_KEY"] = os.getenv(
+    "JWT_SECRET_KEY",
+    "test-jwt-secret"
+)
+
 if not jwt_secret:
     raise RuntimeError("JWT_SECRET_KEY is not set")
 
