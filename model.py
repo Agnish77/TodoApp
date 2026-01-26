@@ -1,7 +1,9 @@
 from data import db
 from datetime import datetime
 from flask_login import UserMixin
-from werkzeug.security import generate_password_hash, check_password_hash
+from flask_bcrypt import Bcrypt
+
+bcrypt = Bcrypt()
 
 class User(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
@@ -10,10 +12,11 @@ class User(db.Model, UserMixin):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def set_password(self, password):
-        self.password = generate_password_hash(password)
+        self.password = bcrypt.generate_password_hash(password).decode("utf-8")
 
     def check_password(self, password):
-        return check_password_hash(self.password, password)
+        return bcrypt.check_password_hash(self.password, password)
+
 
 
 
