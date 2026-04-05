@@ -1,15 +1,7 @@
 from datetime import timedelta
-from flask import flash
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
-from sentence_transformers import SentenceTransformer
+import os
 
-
-
-model = SentenceTransformer("all-MiniLM-L6-v2")
-embedding = model.encode(data.get("title")).tolist()
-
-from flask import Flask, render_template, request, redirect, jsonify
+from flask import Flask, render_template, request, redirect, jsonify, flash
 from flask_login import (
     LoginManager, login_user, logout_user,
     login_required, current_user
@@ -19,42 +11,47 @@ from flask_jwt_extended import (
     JWTManager, create_access_token,
     jwt_required, get_jwt_identity
 )
-import os
+
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+
+from sentence_transformers import SentenceTransformer
 
 from data import db
 from model import User, Todo
 
-# ---------------- CONFIG ----------------
+
+# ---------------- APP ----------------
 
 app = Flask(__name__)
-limiter = Limiter(
-    get_remote_address,
-    app=app,
-    default_limits=["200 per day", "50 per hour"]
-)
+
 app.secret_key = os.getenv("SECRET_KEY", "super-secret-key")
+
+# ---------------- DATABASE ----------------
+
 if os.getenv("FLASK_ENV") == "testing":
     app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///:memory:"
 else:
     app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL")
 
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+
+# ---------------- JWT ----------------
+
 jwt_secret = os.getenv("JWT_SECRET_KEY")
-app.config["JWT_SECRET_KEY"] = os.getenv(
-    "JWT_SECRET_KEY",
-    "test-jwt-secret"
-)
 
 if not jwt_secret:
     raise RuntimeError("JWT_SECRET_KEY is not set")
 
 app.config["JWT_SECRET_KEY"] = jwt_secret
+app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(minutes=30)
 
-app.config["JWT_ACCESS_TOKEN_EXPIRES"]=timedelta(minutes=30)
 
 # ---------------- EXTENSIONS ----------------
 
 db.init_app(app)
+
 bcrypt = Bcrypt(app)
 
 login_manager = LoginManager()
@@ -62,26 +59,42 @@ login_manager.init_app(app)
 login_manager.login_view = "login"
 
 jwt = JWTManager(app)
+
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["200 per day", "50 per hour"]
+)
+
+
+# ---------------- EMBEDDING MODEL ----------------
+
+model = SentenceTransformer("all-MiniLM-L6-v2")
+
+
+# ---------------- JWT ERROR HANDLING ----------------
+
 @jwt.expired_token_loader
 def expired_token_callback(jwt_header, jwt_payload):
     return jsonify({"error": "Token expired"}), 401
 
+
 @jwt.invalid_token_loader
 def invalid_token_callback(error):
     return jsonify({"error": "Invalid token"}), 401
+
 
 @jwt.unauthorized_loader
 def missing_token_callback(error):
     return jsonify({"error": "Token missing"}), 401
 
 
-    
-
-# ---------------- LOGIN ----------------
+# ---------------- LOGIN MANAGER ----------------
 
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
+
 
 # =====================================================
 # ==================== API (JWT) ======================
@@ -90,7 +103,9 @@ def load_user(user_id):
 @app.route("/api/login", methods=["POST"])
 @limiter.limit("5 per minute")
 def api_login():
+
     data = request.get_json()
+
     if not data:
         return jsonify({"error": "Invalid JSON"}), 400
 
@@ -104,6 +119,7 @@ def api_login():
         return jsonify({"error": "Invalid credentials"}), 401
 
     access_token = create_access_token(identity=user.id)
+
     return jsonify({"access_token": access_token}), 200
 
 
@@ -111,6 +127,7 @@ def api_login():
 @jwt_required()
 @limiter.limit("30 per minute")
 def get_todos():
+
     user_id = get_jwt_identity()
 
     page = request.args.get("page", 1, type=int)
@@ -146,11 +163,14 @@ def get_todos():
 @app.route("/api/todos", methods=["POST"])
 @jwt_required()
 def create_todo_api():
+
     user_id = get_jwt_identity()
     data = request.get_json()
 
     if not data or not data.get("title"):
         return jsonify({"error": "Invalid JSON"}), 400
+
+    embedding = model.encode(data.get("title")).tolist()
 
     todo = Todo(
         title=data.get("title"),
@@ -166,18 +186,23 @@ def create_todo_api():
 
 
 # =====================================================
-# ================= WEB (Flask-Login) =================
+# ================= WEB (Flask Login) =================
 # =====================================================
 
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
+
     if request.method == "POST":
-        username=request.form["username"]
-        existing_user = User.query.filter_by(username=username).first()
+
+        username = request.form["username"]
+
+        existing_user = User.query.filter_by(
+            username=username
+        ).first()
+
         if existing_user:
             flash("Username already exists", "error")
             return redirect("/signup")
-
 
         password = bcrypt.generate_password_hash(
             request.form["password"]
@@ -187,8 +212,10 @@ def signup():
             username=username,
             password=password
         )
+
         db.session.add(user)
         db.session.commit()
+
         return redirect("/login")
 
     return render_template("signup.html")
@@ -196,18 +223,28 @@ def signup():
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
+
     if request.method == "POST":
+
         username = request.form["username"]
         password = request.form["password"]
-        user = User.query.filter_by(username=username).first()
+
+        user = User.query.filter_by(
+            username=username
+        ).first()
+
         if not user:
             flash("Username does not exist. Please sign up.", "error")
             return redirect("/signup")
+
         if not bcrypt.check_password_hash(user.password, password):
             flash("Incorrect password. Please try again.", "error")
             return redirect("/login")
+
         login_user(user)
-        flash("Logged in successfully!","Success")
+
+        flash("Logged in successfully!", "success")
+
         return redirect("/")
 
     return render_template("login.html")
@@ -216,22 +253,33 @@ def login():
 @app.route("/logout")
 @login_required
 def logout():
+
     logout_user()
+
     return redirect("/login")
 
 
 @app.route("/", methods=["GET", "POST"])
 @login_required
 def index():
+
     if request.method == "POST":
+
+        title = request.form["title"]
+        desc = request.form["desc"]
+
+        embedding = model.encode(title).tolist()
+
         todo = Todo(
-            title=data.get("title"),
-            desc=data.get("desc"),
-            user_id=user_id,
+            title=title,
+            desc=desc,
+            user_id=current_user.id,
             embedding=embedding
         )
+
         db.session.add(todo)
         db.session.commit()
+
         return redirect("/")
 
     page = request.args.get("page", 1, type=int)
@@ -244,12 +292,17 @@ def index():
         Todo.date_c.desc()
     ).paginate(page=page, per_page=5)
 
-    return render_template("index.html", todos=todos, search=search)
+    return render_template(
+        "index.html",
+        todos=todos,
+        search=search
+    )
 
 
 @app.route("/delete/<int:id>")
 @login_required
 def delete(id):
+
     todo = Todo.query.filter_by(
         id=id,
         user_id=current_user.id
@@ -257,34 +310,45 @@ def delete(id):
 
     db.session.delete(todo)
     db.session.commit()
+
     return redirect("/")
 
 
 @app.route("/update/<int:id>", methods=["GET", "POST"])
 @login_required
 def update(id):
+
     todo = Todo.query.filter_by(
         id=id,
         user_id=current_user.id
     ).first_or_404()
 
     if request.method == "POST":
+
         todo.title = request.form["title"]
         todo.desc = request.form["desc"]
+
         db.session.commit()
+
         return redirect("/")
 
-    return render_template("update.html", todo=todo)
+    return render_template(
+        "update.html",
+        todo=todo
+    )
 
 
 @app.route("/toggle/<int:id>")
 @login_required
 def toggle(id):
+
     todo = Todo.query.filter_by(
         id=id,
         user_id=current_user.id
     ).first_or_404()
 
     todo.completed = not todo.completed
+
     db.session.commit()
+
     return redirect("/")
