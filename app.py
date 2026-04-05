@@ -272,5 +272,3 @@ def toggle(id):
     todo.completed = not todo.completed
     db.session.commit()
     return redirect("/")
-with app.app_context():
-    db.create_all()
