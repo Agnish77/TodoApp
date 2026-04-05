@@ -1,143 +1,136 @@
 {% extends "base.html" %}
 {% block body %}
 
-<nav class="navbar navbar-dark bg-dark shadow-sm">
-  <div class="container d-flex justify-content-between align-items-center">
-    
-    <a class="navbar-brand fw-bold" href="#">📝 Todo App</a>
+<nav class="navbar navbar-dark shadow-sm">
+<div class="container">
 
-    <div class="d-flex align-items-center gap-3">
-      <span class="text-light small">
-        Logged in as <strong>{{ current_user.username }}</strong>
-      </span>
+<a class="navbar-brand fw-bold">📝 Todo Dashboard</a>
 
-      <a href="/logout" class="btn btn-sm btn-outline-light">
-        Logout
-      </a>
-    </div>
+<div class="d-flex align-items-center gap-3">
 
-  </div>
+<span class="text-light small">
+{{ current_user.username }}
+</span>
+
+<a href="/logout" class="btn btn-light btn-sm btn-modern">
+Logout
+</a>
+
+</div>
+</div>
 </nav>
 
 
 <div class="container my-5">
 
-  <!-- ADD TODO CARD -->
-  <div class="card shadow-sm mb-4">
-    <div class="card-body">
-      <h5 class="card-title mb-3">Add a Todo</h5>
+<h3 class="page-title mb-4">Your Tasks</h3>
 
-      <form action="/" method="POST">
-        <div class="row g-2">
-          <div class="col-md-4">
-            <input type="text" class="form-control" name="title" placeholder="Todo title" required>
-          </div>
-          <div class="col-md-6">
-            <input type="text" class="form-control" name="desc" placeholder="Description" required>
-          </div>
-          <div class="col-md-2 d-grid">
-            <button class="btn btn-primary">Add</button>
-          </div>
-        </div>
-      </form>
-    </div>
-  </div>
 
-  <!-- SEARCH -->
-  <div class="d-flex justify-content-between align-items-center mb-3">
-    <h4 class="mb-0">Your Todos</h4>
+<div class="card shadow-sm mb-4">
+<div class="card-body">
 
-    <form method="GET" class="d-flex">
-      <input class="form-control me-2" type="search" name="search"
-             placeholder="Search..." value="{{ search }}">
-      <button class="btn btn-outline-secondary">Search</button>
-    </form>
-  </div>
+<form action="/" method="POST">
 
-  <!-- TODO TABLE -->
-  <div class="card shadow-sm">
-    <div class="table-responsive">
-      <table class="table table-hover align-middle mb-0">
-        <thead class="table-light">
-          <tr>
-            <th>#</th>
-            <th>Title</th>
-            <th>Description</th>
-            <th>Status</th>
-            <th>Date</th>
-            <th class="text-end">Actions</th>
-          </tr>
-        </thead>
+<div class="row g-2">
 
-        <tbody>
-          {% for todo in todos.items %}
-          <tr>
-            <td>{{ loop.index + (todos.page-1)*todos.per_page }}</td>
+<div class="col-md-4">
+<input class="form-control" name="title" placeholder="Task title" required>
+</div>
 
-            <td class="fw-semibold">{{ todo.title }}</td>
+<div class="col-md-6">
+<input class="form-control" name="desc" placeholder="Description">
+</div>
 
-            <td class="text-muted">{{ todo.desc }}</td>
+<div class="col-md-2 d-grid">
+<button class="btn btn-primary btn-modern">
+Add
+</button>
+</div>
 
-            <td>
-              {% if todo.completed %}
-                <span class="badge bg-success">Done</span>
-              {% else %}
-                <span class="badge bg-warning text-dark">Pending</span>
-              {% endif %}
-            </td>
+</div>
+</form>
+</div>
+</div>
 
-            <td>{{ todo.date_c.strftime('%d %b %Y') }}</td>
 
-            <td class="text-end">
-              <a href="/toggle/{{ todo.id }}" class="btn btn-sm btn-outline-success">
-                {% if todo.completed %}Undo{% else %}Done{% endif %}
-              </a>
-              <a href="/update/{{ todo.id }}" class="btn btn-sm btn-outline-primary">Edit</a>
-              <a href="/delete/{{ todo.id }}"
-                 class="btn btn-sm btn-outline-danger"
-                 onclick="return confirm('Delete this todo?')">
-                Delete
-              </a>
-            </td>
-          </tr>
-          {% else %}
-          <tr>
-            <td colspan="6" class="text-center text-muted py-4">
-              No todos found
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
+<div class="row">
 
-  <!-- PAGINATION -->
-  <nav class="mt-4">
-    <ul class="pagination justify-content-center">
-      {% if todos.has_prev %}
-        <li class="page-item">
-          <a class="page-link" href="?page={{ todos.prev_num }}&search={{ search }}">
-            ← Previous
-          </a>
-        </li>
-      {% endif %}
+{% for todo in todos.items %}
 
-      <li class="page-item disabled">
-        <span class="page-link">
-          Page {{ todos.page }} of {{ todos.pages }}
-        </span>
-      </li>
+<div class="col-md-6 col-lg-4 mb-4">
 
-      {% if todos.has_next %}
-        <li class="page-item">
-          <a class="page-link" href="?page={{ todos.next_num }}&search={{ search }}">
-            Next →
-          </a>
-        </li>
-      {% endif %}
-    </ul>
-  </nav>
+<div class="card todo-card shadow-sm">
+
+<div class="card-body">
+
+<h5 class="fw-semibold">{{ todo.title }}</h5>
+
+<p class="text-muted small">
+{{ todo.desc }}
+</p>
+
+{% if todo.completed %}
+
+<span class="badge bg-success">Completed</span>
+
+{% else %}
+
+<span class="badge bg-warning text-dark">Pending</span>
+
+{% endif %}
+
+<div class="mt-3 d-flex gap-2">
+
+<a href="/toggle/{{todo.id}}" class="btn btn-sm btn-outline-success btn-modern">
+Done
+</a>
+
+<a href="/update/{{todo.id}}" class="btn btn-sm btn-outline-primary btn-modern">
+Edit
+</a>
+
+<a href="/delete/{{todo.id}}" class="btn btn-sm btn-outline-danger btn-modern">
+Delete
+</a>
+
+</div>
+
+</div>
+</div>
+</div>
+
+{% endfor %}
+
+</div>
+
+
+<nav class="mt-4">
+<ul class="pagination justify-content-center">
+
+{% if todos.has_prev %}
+<li class="page-item">
+<a class="page-link" href="?page={{todos.prev_num}}">
+Previous
+</a>
+</li>
+{% endif %}
+
+<li class="page-item disabled">
+<span class="page-link">
+Page {{todos.page}} of {{todos.pages}}
+</span>
+</li>
+
+{% if todos.has_next %}
+<li class="page-item">
+<a class="page-link" href="?page={{todos.next_num}}">
+Next
+</a>
+</li>
+{% endif %}
+
+</ul>
+</nav>
 
 </div>
 
