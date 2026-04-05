@@ -24,7 +24,6 @@ from model import User, Todo
 # ---------------- APP ----------------
 
 app = Flask(__name__)
-
 app.secret_key = os.getenv("SECRET_KEY", "super-secret-key")
 
 # ---------------- DATABASE ----------------
@@ -67,9 +66,15 @@ limiter = Limiter(
 )
 
 
-# ---------------- EMBEDDING MODEL ----------------
+# ---------------- EMBEDDING MODEL (LAZY LOAD) ----------------
 
-model = SentenceTransformer("all-MiniLM-L6-v2")
+model = None
+
+def get_model():
+    global model
+    if model is None:
+        model = SentenceTransformer("all-MiniLM-L6-v2")
+    return model
 
 
 # ---------------- JWT ERROR HANDLING ----------------
@@ -170,7 +175,7 @@ def create_todo_api():
     if not data or not data.get("title"):
         return jsonify({"error": "Invalid JSON"}), 400
 
-    embedding = model.encode(data.get("title")).tolist()
+    embedding = get_model().encode(data.get("title")).tolist()
 
     todo = Todo(
         title=data.get("title"),
@@ -268,7 +273,7 @@ def index():
         title = request.form["title"]
         desc = request.form["desc"]
 
-        embedding = model.encode(title).tolist()
+        embedding = get_model().encode(title).tolist()
 
         todo = Todo(
             title=title,
