@@ -2,10 +2,11 @@ Flask
 Flask-SQLAlchemy
 Flask-Login
 Flask-Bcrypt
+flask-jwt-extended
+Flask-Limiter
 gunicorn
 psycopg2-binary
-flask-jwt-extended
+sentence-transformers
+redis
 pytest
 pytest-flask
-
-Flask-Limiter
