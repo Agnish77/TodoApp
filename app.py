@@ -1,5 +1,7 @@
 from datetime import timedelta
 from flask import flash
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 #importing
 
 from flask import Flask, render_template, request, redirect, jsonify
@@ -20,6 +22,11 @@ from model import User, Todo
 # ---------------- CONFIG ----------------
 
 app = Flask(__name__)
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["200 per day", "50 per hour"]
+)
 app.secret_key = os.getenv("SECRET_KEY", "super-secret-key")
 if os.getenv("FLASK_ENV") == "testing":
     app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///:memory:"
@@ -76,6 +83,7 @@ def load_user(user_id):
 # =====================================================
 
 @app.route("/api/login", methods=["POST"])
+@limiter.limit("5 per minute")
 def api_login():
     data = request.get_json()
     if not data:
@@ -96,6 +104,7 @@ def api_login():
 
 @app.route("/api/todos", methods=["GET"])
 @jwt_required()
+@limiter.limit("30 per minute")
 def get_todos():
     user_id = get_jwt_identity()
 
