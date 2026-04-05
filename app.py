@@ -15,7 +15,7 @@ from flask_jwt_extended import (
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
-from sentence_transformers import SentenceTransformer
+from flask_socketio import SocketIO, emit
 
 from data import db
 from model import User, Todo
@@ -24,26 +24,23 @@ from model import User, Todo
 # ---------------- APP ----------------
 
 app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY", "super-secret-key")
 
-# ---------------- DATABASE ----------------
+app.secret_key = os.getenv("SECRET_KEY", "dev-secret")
 
-if os.getenv("FLASK_ENV") == "testing":
-    app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///:memory:"
-else:
-    app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL")
+app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv(
+    "DATABASE_URL", "sqlite:///todo.db"
+)
 
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 
 # ---------------- JWT ----------------
 
-jwt_secret = os.getenv("JWT_SECRET_KEY")
+app.config["JWT_SECRET_KEY"] = os.getenv(
+    "JWT_SECRET_KEY",
+    "jwt-secret"
+)
 
-if not jwt_secret:
-    raise RuntimeError("JWT_SECRET_KEY is not set")
-
-app.config["JWT_SECRET_KEY"] = jwt_secret
 app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(minutes=30)
 
 
@@ -65,33 +62,7 @@ limiter = Limiter(
     default_limits=["200 per day", "50 per hour"]
 )
 
-
-# ---------------- EMBEDDING MODEL (LAZY LOAD) ----------------
-
-model = None
-
-def get_model():
-    global model
-    if model is None:
-        model = SentenceTransformer("all-MiniLM-L6-v2")
-    return model
-
-
-# ---------------- JWT ERROR HANDLING ----------------
-
-@jwt.expired_token_loader
-def expired_token_callback(jwt_header, jwt_payload):
-    return jsonify({"error": "Token expired"}), 401
-
-
-@jwt.invalid_token_loader
-def invalid_token_callback(error):
-    return jsonify({"error": "Invalid token"}), 401
-
-
-@jwt.unauthorized_loader
-def missing_token_callback(error):
-    return jsonify({"error": "Token missing"}), 401
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 
 # ---------------- LOGIN MANAGER ----------------
@@ -111,58 +82,40 @@ def api_login():
 
     data = request.get_json()
 
-    if not data:
-        return jsonify({"error": "Invalid JSON"}), 400
-
     user = User.query.filter_by(
         username=data.get("username")
     ).first()
 
     if not user or not bcrypt.check_password_hash(
-        user.password, data.get("password")
+        user.password,
+        data.get("password")
     ):
         return jsonify({"error": "Invalid credentials"}), 401
 
-    access_token = create_access_token(identity=user.id)
+    token = create_access_token(identity=user.id)
 
-    return jsonify({"access_token": access_token}), 200
+    return jsonify({"access_token": token})
 
 
 @app.route("/api/todos", methods=["GET"])
 @jwt_required()
-@limiter.limit("30 per minute")
 def get_todos():
 
     user_id = get_jwt_identity()
 
-    page = request.args.get("page", 1, type=int)
-    limit = request.args.get("limit", 5, type=int)
-
-    pagination = Todo.query.filter_by(
+    todos = Todo.query.filter_by(
         user_id=user_id
-    ).order_by(
-        Todo.date_c.desc()
-    ).paginate(
-        page=page,
-        per_page=limit,
-        error_out=False
-    )
+    ).all()
 
-    return jsonify({
-        "page": page,
-        "limit": limit,
-        "total": pagination.total,
-        "todos": [
-            {
-                "id": t.id,
-                "title": t.title,
-                "desc": t.desc,
-                "completed": t.completed,
-                "created_at": t.date_c.strftime("%Y-%m-%d")
-            }
-            for t in pagination.items
-        ]
-    }), 200
+    return jsonify([
+        {
+            "id": t.id,
+            "title": t.title,
+            "desc": t.desc,
+            "completed": t.completed
+        }
+        for t in todos
+    ])
 
 
 @app.route("/api/todos", methods=["POST"])
@@ -170,28 +123,25 @@ def get_todos():
 def create_todo_api():
 
     user_id = get_jwt_identity()
+
     data = request.get_json()
-
-    if not data or not data.get("title"):
-        return jsonify({"error": "Invalid JSON"}), 400
-
-    embedding = get_model().encode(data.get("title")).tolist()
 
     todo = Todo(
         title=data.get("title"),
         desc=data.get("desc"),
-        user_id=user_id,
-        embedding=embedding
+        user_id=user_id
     )
 
     db.session.add(todo)
     db.session.commit()
 
-    return jsonify({"message": "Todo created"}), 201
+    socketio.emit("todo_update")
+
+    return jsonify({"message": "Todo created"})
 
 
 # =====================================================
-# ================= WEB (Flask Login) =================
+# ================= WEB ROUTES ========================
 # =====================================================
 
 @app.route("/signup", methods=["GET", "POST"])
@@ -201,22 +151,15 @@ def signup():
 
         username = request.form["username"]
 
-        existing_user = User.query.filter_by(
-            username=username
-        ).first()
-
-        if existing_user:
-            flash("Username already exists", "error")
+        if User.query.filter_by(username=username).first():
+            flash("Username exists")
             return redirect("/signup")
 
         password = bcrypt.generate_password_hash(
             request.form["password"]
         ).decode("utf-8")
 
-        user = User(
-            username=username,
-            password=password
-        )
+        user = User(username=username, password=password)
 
         db.session.add(user)
         db.session.commit()
@@ -231,24 +174,22 @@ def login():
 
     if request.method == "POST":
 
-        username = request.form["username"]
-        password = request.form["password"]
-
         user = User.query.filter_by(
-            username=username
+            username=request.form["username"]
         ).first()
 
         if not user:
-            flash("Username does not exist. Please sign up.", "error")
-            return redirect("/signup")
+            flash("User not found")
+            return redirect("/login")
 
-        if not bcrypt.check_password_hash(user.password, password):
-            flash("Incorrect password. Please try again.", "error")
+        if not bcrypt.check_password_hash(
+            user.password,
+            request.form["password"]
+        ):
+            flash("Wrong password")
             return redirect("/login")
 
         login_user(user)
-
-        flash("Logged in successfully!", "success")
 
         return redirect("/")
 
@@ -270,38 +211,24 @@ def index():
 
     if request.method == "POST":
 
-        title = request.form["title"]
-        desc = request.form["desc"]
-
-        embedding = get_model().encode(title).tolist()
-
         todo = Todo(
-            title=title,
-            desc=desc,
-            user_id=current_user.id,
-            embedding=embedding
+            title=request.form["title"],
+            desc=request.form["desc"],
+            user_id=current_user.id
         )
 
         db.session.add(todo)
         db.session.commit()
 
+        socketio.emit("todo_update")
+
         return redirect("/")
 
-    page = request.args.get("page", 1, type=int)
-    search = request.args.get("search", "")
+    todos = Todo.query.filter_by(
+        user_id=current_user.id
+    ).order_by(Todo.date_c.desc()).all()
 
-    todos = Todo.query.filter(
-        Todo.user_id == current_user.id,
-        Todo.title.contains(search)
-    ).order_by(
-        Todo.date_c.desc()
-    ).paginate(page=page, per_page=5)
-
-    return render_template(
-        "index.html",
-        todos=todos,
-        search=search
-    )
+    return render_template("index.html", todos=todos)
 
 
 @app.route("/delete/<int:id>")
@@ -316,31 +243,9 @@ def delete(id):
     db.session.delete(todo)
     db.session.commit()
 
+    socketio.emit("todo_update")
+
     return redirect("/")
-
-
-@app.route("/update/<int:id>", methods=["GET", "POST"])
-@login_required
-def update(id):
-
-    todo = Todo.query.filter_by(
-        id=id,
-        user_id=current_user.id
-    ).first_or_404()
-
-    if request.method == "POST":
-
-        todo.title = request.form["title"]
-        todo.desc = request.form["desc"]
-
-        db.session.commit()
-
-        return redirect("/")
-
-    return render_template(
-        "update.html",
-        todo=todo
-    )
 
 
 @app.route("/toggle/<int:id>")
@@ -356,4 +261,12 @@ def toggle(id):
 
     db.session.commit()
 
+    socketio.emit("todo_update")
+
     return redirect("/")
+
+
+# ---------------- RUN ----------------
+
+if __name__ == "__main__":
+    socketio.run(app)
