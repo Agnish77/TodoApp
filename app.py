@@ -2,7 +2,12 @@ from datetime import timedelta
 from flask import flash
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-#importing
+from sentence_transformers import SentenceTransformer
+
+
+
+model = SentenceTransformer("all-MiniLM-L6-v2")
+embedding = model.encode(data.get("title")).tolist()
 
 from flask import Flask, render_template, request, redirect, jsonify
 from flask_login import (
@@ -150,7 +155,8 @@ def create_todo_api():
     todo = Todo(
         title=data.get("title"),
         desc=data.get("desc"),
-        user_id=user_id
+        user_id=user_id,
+        embedding=embedding
     )
 
     db.session.add(todo)
@@ -219,9 +225,10 @@ def logout():
 def index():
     if request.method == "POST":
         todo = Todo(
-            title=request.form["title"],
-            desc=request.form["desc"],
-            user_id=current_user.id
+            title=data.get("title"),
+            desc=data.get("desc"),
+            user_id=user_id,
+            embedding=embedding
         )
         db.session.add(todo)
         db.session.commit()
