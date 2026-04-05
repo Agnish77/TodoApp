@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block body %}
 
-<nav class="navbar navbar-dark shadow-sm">
+<nav class="navbar navbar-dark shadow-sm bg-dark">
 <div class="container">
 
 <a class="navbar-brand fw-bold">📝 Todo Dashboard</a>
@@ -12,7 +12,7 @@
 {{ current_user.username }}
 </span>
 
-<a href="/logout" class="btn btn-light btn-sm btn-modern">
+<a href="/logout" class="btn btn-light btn-sm">
 Logout
 </a>
 
@@ -23,7 +23,7 @@ Logout
 
 <div class="container my-5">
 
-<h3 class="page-title mb-4">Your Tasks</h3>
+<h3 class="mb-4">Your Tasks</h3>
 
 
 <div class="card shadow-sm mb-4">
@@ -42,7 +42,7 @@ Logout
 </div>
 
 <div class="col-md-2 d-grid">
-<button class="btn btn-primary btn-modern">
+<button class="btn btn-primary">
 Add
 </button>
 </div>
@@ -55,11 +55,11 @@ Add
 
 <div class="row">
 
-{% for todo in todos.items %}
+{% for todo in todos %}
 
 <div class="col-md-6 col-lg-4 mb-4">
 
-<div class="card todo-card shadow-sm">
+<div class="card shadow-sm">
 
 <div class="card-body">
 
@@ -81,15 +81,15 @@ Add
 
 <div class="mt-3 d-flex gap-2">
 
-<a href="/toggle/{{todo.id}}" class="btn btn-sm btn-outline-success btn-modern">
+<a href="/toggle/{{todo.id}}" class="btn btn-sm btn-outline-success">
 Done
 </a>
 
-<a href="/update/{{todo.id}}" class="btn btn-sm btn-outline-primary btn-modern">
+<a href="/update/{{todo.id}}" class="btn btn-sm btn-outline-primary">
 Edit
 </a>
 
-<a href="/delete/{{todo.id}}" class="btn btn-sm btn-outline-danger btn-modern">
+<a href="/delete/{{todo.id}}" class="btn btn-sm btn-outline-danger">
 Delete
 </a>
 
@@ -103,35 +103,21 @@ Delete
 
 </div>
 
-
-<nav class="mt-4">
-<ul class="pagination justify-content-center">
-
-{% if todos.has_prev %}
-<li class="page-item">
-<a class="page-link" href="?page={{todos.prev_num}}">
-Previous
-</a>
-</li>
-{% endif %}
-
-<li class="page-item disabled">
-<span class="page-link">
-Page {{todos.page}} of {{todos.pages}}
-</span>
-</li>
-
-{% if todos.has_next %}
-<li class="page-item">
-<a class="page-link" href="?page={{todos.next_num}}">
-Next
-</a>
-</li>
-{% endif %}
-
-</ul>
-</nav>
-
 </div>
+
+
+<!-- REALTIME SOCKET -->
+
+<script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+
+<script>
+
+const socket = io();
+
+socket.on("todo_update", function(){
+location.reload();
+});
+
+</script>
 
 {% endblock %}
