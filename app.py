@@ -1,4 +1,3 @@
-
 import os
 import redis
 import json
@@ -21,10 +20,31 @@ from data import db
 from model import User, Todo
 
 # ============================================================================
-# APP INITIALIZATION
+# PROMETHEUS METRICS (FAANG-READY - FIXED VERSION)
 # ============================================================================
+from prometheus_flask_exporter import PrometheusMetrics
 
 app = Flask(__name__)
+
+# Initialize Prometheus metrics correctly
+metrics = PrometheusMetrics(app)
+
+# Create custom metrics properly
+@app.before_request
+def before_request():
+    g.start_time = time.time()
+
+@app.after_request
+def after_request(response):
+    if hasattr(g, 'start_time'):
+        elapsed = time.time() - g.start_time
+        # Add response time header
+        response.headers['X-Response-Time'] = f"{elapsed*1000:.2f}ms"
+        
+        # Log slow requests
+        if elapsed > 0.5:
+            app.logger.warning(f'Slow request: {request.path} took {elapsed:.3f}s')
+    return response
 
 # ============================================================================
 # APP CONFIG
@@ -54,46 +74,29 @@ app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(minutes=30)
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 
-# Handle Redis connection gracefully
 try:
     redis_client = redis.from_url(REDIS_URL)
     redis_client.ping()
-    print("✅ Redis connected successfully")
-except Exception as e:
-    print(f"⚠️ Redis connection failed: {e}")
-    # Create a dummy Redis client for fallback
+    print("✅ Redis connected")
+except:
     class DummyRedis:
         def __init__(self):
             self._data = {}
-        def get(self, key):
-            return self._data.get(key)
-        def setex(self, key, time, value):
-            self._data[key] = value
-        def delete(self, key):
-            if key in self._data:
-                del self._data[key]
-        def ping(self):
-            return True
-        def lpush(self, key, value):
-            return 1
-        def ltrim(self, key, start, end):
-            return True
-        def publish(self, channel, message):
-            return 0
+        def get(self, key): return self._data.get(key)
+        def setex(self, key, time, value): self._data[key] = value
+        def delete(self, key): 
+            if key in self._data: del self._data[key]
+        def ping(self): return True
+        def publish(self, channel, message): return 0
     redis_client = DummyRedis()
 
-# Initialize task queue
-try:
-    task_queue = Queue(connection=redis_client) if not isinstance(redis_client, DummyRedis) else None
-except:
-    task_queue = None
+task_queue = Queue(connection=redis_client) if not isinstance(redis_client, DummyRedis) else None
 
 # ============================================================================
 # EXTENSIONS
 # ============================================================================
 
 db.init_app(app)
-
 bcrypt = Bcrypt(app)
 
 login_manager = LoginManager()
@@ -102,17 +105,9 @@ login_manager.login_view = "login"
 
 jwt = JWTManager(app)
 
-limiter = Limiter(
-    get_remote_address,
-    app=app,
-    default_limits=["200 per day", "50 per hour"]
-)
+limiter = Limiter(get_remote_address, app=app, default_limits=["200 per day", "50 per hour"])
 
-socketio = SocketIO(
-    app,
-    cors_allowed_origins="*",
-    async_mode="eventlet"
-)
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
 
 # ============================================================================
 # LOGIN MANAGER
@@ -127,7 +122,6 @@ def load_user(user_id):
 # ============================================================================
 
 def publish_event(event):
-    """Publish event to Redis channel"""
     try:
         if not isinstance(redis_client, DummyRedis):
             redis_client.publish("todo_events", event)
@@ -135,7 +129,6 @@ def publish_event(event):
         pass
 
 def redis_listener():
-    """Listen for Redis events"""
     try:
         if not isinstance(redis_client, DummyRedis):
             pubsub = redis_client.pubsub()
@@ -147,19 +140,16 @@ def redis_listener():
         pass
 
 def start_event_listener():
-    """Start Redis event listener thread"""
     if not isinstance(redis_client, DummyRedis):
         thread = threading.Thread(target=redis_listener)
         thread.daemon = True
         thread.start()
-        print("✅ Event listener started")
 
 # ============================================================================
 # CACHE SYSTEM
 # ============================================================================
 
 def get_cached_todos(user_id):
-    """Get cached todos"""
     cache_key = f"todos:{user_id}"
     try:
         cached = redis_client.get(cache_key)
@@ -169,109 +159,46 @@ def get_cached_todos(user_id):
         pass
     
     todos = Todo.query.filter_by(user_id=user_id).all()
-    result = [
-        {
-            "id": t.id,
-            "title": t.title,
-            "desc": t.desc,
-            "completed": t.completed
-        }
-        for t in todos
-    ]
+    result = [{"id": t.id, "title": t.title, "desc": t.desc, "completed": t.completed} for t in todos]
     
     try:
         redis_client.setex(cache_key, 60, json.dumps(result))
     except:
         pass
-    
     return result
 
 def invalidate_cache(user_id):
-    """Invalidate cache"""
     try:
         redis_client.delete(f"todos:{user_id}")
     except:
         pass
 
-# ============================================================================
-# BACKGROUND JOB
-# ============================================================================
-
 def log_event(event):
-    """Background job to log events"""
     print("Background job:", event)
 
 # ============================================================================
-# SIMPLE PERFORMANCE MIDDLEWARE (No external dependencies)
-# ============================================================================
-
-@app.before_request
-def before_request():
-    """Start request timer"""
-    g.start_time = time.time()
-
-@app.after_request
-def after_request(response):
-    """Log slow requests"""
-    if hasattr(g, 'start_time'):
-        elapsed = time.time() - g.start_time
-        # Add response header
-        response.headers['X-Response-Time'] = f"{elapsed*1000:.2f}ms"
-        # Log slow requests (>1 second)
-        if elapsed > 1:
-            app.logger.warning(f'Slow request: {request.path} took {elapsed:.3f}s')
-    return response
-
-# ============================================================================
-# HEALTH CHECK ENDPOINTS
+# HEALTH CHECK (KUBERNETES READY)
 # ============================================================================
 
 @app.route('/health', methods=['GET'])
 def health_check():
-    """Health check endpoint"""
     return jsonify({
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
         "service": "todo-saas"
     }), 200
 
-@app.route('/ready', methods=['GET'])
-def readiness_probe():
-    """Readiness probe"""
-    return jsonify({"status": "ready"}), 200
+@app.route('/metrics', methods=['GET'])
+def metrics_endpoint():
+    return "Prometheus metrics available at /metrics"
 
 # ============================================================================
-# API LOGIN
+# API ROUTES
 # ============================================================================
 
 @app.route("/api/login", methods=["POST"])
 @limiter.limit("5 per minute")
 def api_login():
-    """
-    User Login
-    ---
-    tags:
-      - Authentication
-    consumes:
-      - application/json
-    parameters:
-      - in: body
-        name: body
-        schema:
-          type: object
-          properties:
-            username:
-              type: string
-              example: user1
-            password:
-              type: string
-              example: password123
-    responses:
-      200:
-        description: JWT access token
-      401:
-        description: Invalid credentials
-    """
     data = request.get_json()
     user = User.query.filter_by(username=data.get("username")).first()
     if not user or not bcrypt.check_password_hash(user.password, data.get("password")):
@@ -279,31 +206,9 @@ def api_login():
     token = create_access_token(identity=user.id)
     return jsonify({"access_token": token})
 
-# ============================================================================
-# GET TODOS API
-# ============================================================================
-
 @app.route("/api/todos", methods=["GET"])
 @jwt_required()
 def get_todos():
-    """
-    Get Todos
-    ---
-    tags:
-      - Todos
-    parameters:
-      - name: page
-        in: query
-        type: integer
-        default: 1
-      - name: limit
-        in: query
-        type: integer
-        default: 10
-    responses:
-      200:
-        description: List of todos
-    """
     user_id = get_jwt_identity()
     page = int(request.args.get("page", 1))
     limit = int(request.args.get("limit", 10))
@@ -313,54 +218,15 @@ def get_todos():
         "page": page,
         "limit": limit,
         "total": todos.total,
-        "data": [
-            {
-                "id": t.id,
-                "title": t.title,
-                "desc": t.desc,
-                "completed": t.completed
-            }
-            for t in todos.items
-        ]
+        "data": [{"id": t.id, "title": t.title, "desc": t.desc, "completed": t.completed} for t in todos.items]
     })
-
-# ============================================================================
-# CREATE TODO API
-# ============================================================================
 
 @app.route("/api/todos", methods=["POST"])
 @jwt_required()
 def create_todo_api():
-    """
-    Create Todo
-    ---
-    tags:
-      - Todos
-    consumes:
-      - application/json
-    parameters:
-      - in: body
-        name: body
-        schema:
-          type: object
-          properties:
-            title:
-              type: string
-              example: Buy milk
-            desc:
-              type: string
-              example: from supermarket
-    responses:
-      200:
-        description: Todo created
-    """
     user_id = get_jwt_identity()
     data = request.get_json()
-    todo = Todo(
-        title=data.get("title"),
-        desc=data.get("desc"),
-        user_id=user_id
-    )
+    todo = Todo(title=data.get("title"), desc=data.get("desc"), user_id=user_id)
     db.session.add(todo)
     db.session.commit()
     invalidate_cache(user_id)
@@ -370,7 +236,7 @@ def create_todo_api():
     return jsonify({"message": "Todo created"})
 
 # ============================================================================
-# SIGNUP
+# WEB ROUTES
 # ============================================================================
 
 @app.route("/signup", methods=["GET", "POST"])
@@ -387,10 +253,6 @@ def signup():
         return redirect("/login")
     return render_template("signup.html")
 
-# ============================================================================
-# LOGIN
-# ============================================================================
-
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
@@ -405,29 +267,17 @@ def login():
         return redirect("/")
     return render_template("login.html")
 
-# ============================================================================
-# LOGOUT
-# ============================================================================
-
 @app.route("/logout")
 @login_required
 def logout():
     logout_user()
     return redirect("/login")
 
-# ============================================================================
-# DASHBOARD
-# ============================================================================
-
 @app.route("/", methods=["GET", "POST"])
 @login_required
 def index():
     if request.method == "POST":
-        todo = Todo(
-            title=request.form["title"],
-            desc=request.form["desc"],
-            user_id=current_user.id
-        )
+        todo = Todo(title=request.form["title"], desc=request.form["desc"], user_id=current_user.id)
         db.session.add(todo)
         db.session.commit()
         invalidate_cache(current_user.id)
@@ -443,42 +293,28 @@ def index():
     todos = query.order_by(Todo.date_c.desc()).all()
     return render_template("index.html", todos=todos)
 
-# ============================================================================
-# UPDATE TODO
-# ============================================================================
-
 @app.route("/update/<int:id>", methods=["GET", "POST"])
 @login_required
 def update(id):
     todo = Todo.query.filter_by(id=id, user_id=current_user.id).first_or_404()
-    
     if request.method == "POST":
         title = request.form.get("title", "").strip()
         desc = request.form.get("desc", "").strip()
-        
         if not title:
             flash("Title is required!", "danger")
             return redirect(f"/update/{id}")
-        
         todo.title = title
         todo.desc = desc
-        
         try:
             db.session.commit()
             invalidate_cache(current_user.id)
             publish_event("todo_updated")
             flash("Task updated successfully!", "success")
             return redirect("/")
-        except Exception as e:
+        except:
             db.session.rollback()
-            flash(f"Error updating task: {str(e)}", "danger")
-            return redirect(f"/update/{id}")
-    
+            flash("Error updating task", "danger")
     return render_template("update.html", todo=todo)
-
-# ============================================================================
-# DELETE
-# ============================================================================
 
 @app.route("/delete/<int:id>")
 @login_required
@@ -490,10 +326,6 @@ def delete(id):
     publish_event("todo_deleted")
     return redirect("/")
 
-# ============================================================================
-# TOGGLE
-# ============================================================================
-
 @app.route("/toggle/<int:id>")
 @login_required
 def toggle(id):
@@ -504,42 +336,17 @@ def toggle(id):
     publish_event("todo_updated")
     return redirect("/")
 
-# ============================================================================
-# API DOCS
-# ============================================================================
-
 @app.route("/api-docs")
 def api_docs():
     return render_template("api_docs.html")
 
 # ============================================================================
-# ERROR HANDLERS
-# ============================================================================
-
-@app.errorhandler(404)
-def not_found(error):
-    if request.path.startswith('/api/'):
-        return jsonify({"error": "Resource not found"}), 404
-    return "<h1>404 - Page Not Found</h1>", 404
-
-@app.errorhandler(500)
-def internal_error(error):
-    app.logger.error(f"Internal server error: {error}")
-    db.session.rollback()
-    if request.path.startswith('/api/'):
-        return jsonify({"error": "Internal server error"}), 500
-    return "<h1>500 - Server Error</h1>", 500
-
-# ============================================================================
-# CREATE DATABASE TABLES
+# DATABASE SETUP
 # ============================================================================
 
 with app.app_context():
-    try:
-        db.create_all()
-        print("✅ Database tables created successfully")
-    except Exception as e:
-        print(f"⚠️ Database creation error: {e}")
+    db.create_all()
+    print("✅ Database ready")
 
 # ============================================================================
 # START SERVER
@@ -547,15 +354,8 @@ with app.app_context():
 
 if __name__ == "__main__":
     start_event_listener()
-    
-    print("\n" + "="*60)
-    print("🚀 Todo SaaS Platform - Production Ready")
-    print("="*60)
-    print(f"📍 Web UI:        http://localhost:5000")
-    print(f"📝 Signup:        http://localhost:5000/signup")
-    print(f"🔐 Login:         http://localhost:5000/login")
-    print(f"📚 API Docs:      http://localhost:5000/api-docs")
-    print(f"💚 Health Check:  http://localhost:5000/health")
-    print("="*60 + "\n")
-    
+    print("\n" + "="*50)
+    print("🚀 Todo SaaS with Prometheus")
+    print("📊 Metrics: http://localhost:5000/metrics")
+    print("="*50 + "\n")
     socketio.run(app, host="0.0.0.0", port=5000, debug=True)
