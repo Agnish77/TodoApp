@@ -1,17 +1,49 @@
-Flask
-Flask-SQLAlchemy
-Flask-Login
-Flask-Bcrypt
-Flask-JWT-Extended
-Flask-Limiter
-Flask-SocketIO
-eventlet
-redis
-rq
-gunicorn
-psycopg2-binary
-python-dotenv
-pytest
+# Core Framework
+Flask==2.3.3
+flask-sqlalchemy==3.1.1
+flask-login==0.6.3
+flask-bcrypt==1.0.1
+flask-jwt-extended==4.6.0
+flask-limiter==3.5.0
+flask-socketio==5.3.6
+flasgger==0.9.7
 
-flasgger
+# Database
+SQLAlchemy==2.0.23
+psycopg2-binary==2.9.9
+sqlalchemy-utils==0.41.1
 
+# Redis & Queues
+redis==5.0.1
+rq==1.15.1
+
+# ============ FAANG-READY OBSERVABILITY STACK ============
+# Prometheus for Metrics
+prometheus-flask-exporter==0.22.4
+prometheus-client==0.19.0
+
+# OpenTelemetry for Distributed Tracing
+opentelemetry-api==1.21.0
+opentelemetry-sdk==1.21.0
+opentelemetry-instrumentation-flask==0.42b0
+opentelemetry-instrumentation-sqlalchemy==0.42b0
+opentelemetry-exporter-jaeger==1.21.0
+opentelemetry-exporter-otlp==1.21.0
+opentelemetry-semantic-conventions==0.43b0
+
+# Performance & Caching
+python-dotenv==1.0.0
+ujson==5.8.0
+python-dateutil==2.8.2
+
+# Security Enhancements
+email-validator==2.1.0
+python-jose[cryptography]==3.3.0
+bcrypt==4.1.0
+
+# Production Server
+eventlet==0.33.3
+gunicorn==21.2.0
+
+# Load Testing (For Resume)
+locust==2.20.0
