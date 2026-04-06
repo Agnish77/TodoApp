@@ -1,106 +1,91 @@
 {% extends "base.html" %}
 {% block body %}
 
-<div class="container d-flex justify-content-center align-items-center" style="min-height:90vh;">
-  <div class="card shadow-lg border-0 p-4" style="max-width:420px;width:100%;">
-    
-    <h3 class="text-center mb-4 fw-bold text-primary">
-      <i class="bi bi-box-arrow-in-right me-2"></i>Welcome Back
-    </h3>
+<div class="container d-flex justify-content-center align-items-center" style="min-height: 90vh;">
+    <div class="card shadow-lg border-0" style="max-width: 420px; width: 100%; border-radius: 20px;" data-aos="fade-up">
+        <div class="card-body p-5">
+            <div class="text-center mb-4">
+                <div class="bg-primary bg-opacity-10 rounded-circle p-3 d-inline-block mb-3">
+                    <i class="bi bi-box-arrow-in-right text-primary fs-1"></i>
+                </div>
+                <h3 class="fw-bold">Welcome Back</h3>
+                <p class="text-muted">Login to manage your tasks</p>
+            </div>
 
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        {% for category, message in messages %}
-          <div class="alert alert-{{ category if category != 'message' else 'danger' }} alert-dismissible fade show" role="alert">
-            <i class="bi bi-exclamation-triangle-fill me-2"></i>{{ message }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-          </div>
-        {% endfor %}
-      {% endif %}
-    {% endwith %}
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category if category != 'message' else 'danger' }} alert-dismissible fade show" role="alert">
+                            <i class="bi bi-exclamation-triangle-fill me-2"></i>{{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
 
-    <!-- Demo credentials alert (remove in production) -->
-    <div class="alert alert-info alert-dismissible fade show small" role="alert">
-      <i class="bi bi-info-circle-fill me-2"></i>
-      <strong>Demo Credentials:</strong> demo@example.com / Demo@123
-      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            <form method="POST">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">
+                        <i class="bi bi-person"></i> Username
+                    </label>
+                    <input type="text" name="username" class="form-control form-control-lg" 
+                           placeholder="Enter your username" required autofocus>
+                </div>
+
+                <div class="mb-4">
+                    <label class="form-label fw-semibold">
+                        <i class="bi bi-key"></i> Password
+                    </label>
+                    <div class="input-group">
+                        <input type="password" name="password" id="password" 
+                               class="form-control form-control-lg" 
+                               placeholder="Enter your password" required>
+                        <button class="btn btn-outline-secondary" type="button" id="togglePassword">
+                            <i class="bi bi-eye"></i>
+                        </button>
+                    </div>
+                    <div class="text-end mt-2">
+                        <a href="#" class="text-decoration-none small">Forgot password?</a>
+                    </div>
+                </div>
+
+                <div class="mb-3 form-check">
+                    <input type="checkbox" class="form-check-input" id="rememberMe" name="remember_me">
+                    <label class="form-check-label small" for="rememberMe">Remember me for 30 days</label>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-lg w-100 btn-modern">
+                    <i class="bi bi-box-arrow-in-right"></i> Login
+                </button>
+            </form>
+
+            <hr class="my-4">
+
+            <div class="text-center">
+                <p class="small text-muted mb-2">Or continue with</p>
+                <button class="btn btn-outline-secondary btn-sm mx-1" onclick="showToast('Google login coming soon!', 'info')">
+                    <i class="bi bi-google"></i> Google
+                </button>
+                <button class="btn btn-outline-secondary btn-sm mx-1" onclick="showToast('GitHub login coming soon!', 'info')">
+                    <i class="bi bi-github"></i> GitHub
+                </button>
+            </div>
+
+            <p class="text-center mt-4 small">
+                Don't have an account? 
+                <a href="/signup" class="text-primary fw-semibold text-decoration-none">Create one now</a>
+            </p>
+        </div>
     </div>
-
-    <form method="POST" id="loginForm">
-      <div class="mb-3">
-        <label class="form-label fw-semibold">Username / Email</label>
-        <div class="input-group">
-          <span class="input-group-text bg-light"><i class="bi bi-envelope"></i></span>
-          <input type="text" name="username" class="form-control" placeholder="Enter your username or email" required autofocus>
-        </div>
-      </div>
-
-      <div class="mb-4">
-        <label class="form-label fw-semibold">Password</label>
-        <div class="input-group">
-          <span class="input-group-text bg-light"><i class="bi bi-key"></i></span>
-          <input type="password" name="password" id="password" class="form-control" placeholder="Enter your password" required>
-          <button class="btn btn-outline-secondary" type="button" id="togglePassword">
-            <i class="bi bi-eye"></i>
-          </button>
-        </div>
-        <div class="text-end mt-1">
-          <a href="/forgot-password" class="text-decoration-none small">Forgot password?</a>
-        </div>
-      </div>
-
-      <div class="mb-3 form-check">
-        <input type="checkbox" class="form-check-input" id="rememberMe" name="remember_me">
-        <label class="form-check-label small" for="rememberMe">Remember me for 30 days</label>
-      </div>
-
-      <button type="submit" class="btn btn-primary w-100 fw-semibold">
-        <i class="bi bi-box-arrow-in-right me-2"></i>Login
-      </button>
-    </form>
-
-    <hr class="my-4">
-
-    <div class="text-center">
-      <p class="small text-muted mb-2">Or continue with</p>
-      <button class="btn btn-outline-secondary btn-sm mx-1" onclick="alert('Google OAuth coming soon!')">
-        <i class="bi bi-google"></i> Google
-      </button>
-      <button class="btn btn-outline-secondary btn-sm mx-1" onclick="alert('GitHub OAuth coming soon!')">
-        <i class="bi bi-github"></i> GitHub
-      </button>
-    </div>
-
-    <p class="text-center mt-4 small text-muted">
-      Don't have an account? <a href="/signup" class="text-primary fw-semibold">Create one now</a>
-    </p>
-  </div>
 </div>
 
 <script>
-// Toggle password visibility
 document.getElementById('togglePassword').addEventListener('click', function() {
-  const passwordInput = document.getElementById('password');
-  const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
-  passwordInput.setAttribute('type', type);
-  this.querySelector('i').classList.toggle('bi-eye');
-  this.querySelector('i').classList.toggle('bi-eye-slash');
+    const passwordInput = document.getElementById('password');
+    const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+    passwordInput.setAttribute('type', type);
+    this.querySelector('i').classList.toggle('bi-eye');
+    this.querySelector('i').classList.toggle('bi-eye-slash');
 });
-
-// Add loading state on form submit
-document.getElementById('loginForm').addEventListener('submit', function(e) {
-  const submitBtn = this.querySelector('button[type="submit"]');
-  submitBtn.disabled = true;
-  submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Logging in...';
-  
-  // If you want to prevent actual submit for demo, remove this
-  // setTimeout(() => {
-  //   submitBtn.disabled = false;
-  //   submitBtn.innerHTML = '<i class="bi bi-box-arrow-in-right me-2"></i>Login';
-  // }, 2000);
-});
-
-// Enter key support - already handled by HTML form
 </script>
-
 {% endblock %}
