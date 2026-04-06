@@ -20,36 +20,21 @@ from data import db
 from model import User, Todo
 
 # ============================================================================
-# PROMETHEUS METRICS (FAANG-READY - FIXED VERSION)
+# PROMETHEUS METRICS
 # ============================================================================
 from prometheus_flask_exporter import PrometheusMetrics
 
+# ============================================================================
+# APP INITIALIZATION
+# ============================================================================
 app = Flask(__name__)
 
-# Initialize Prometheus metrics correctly
+# Initialize Prometheus metrics
 metrics = PrometheusMetrics(app)
-
-# Create custom metrics properly
-@app.before_request
-def before_request():
-    g.start_time = time.time()
-
-@app.after_request
-def after_request(response):
-    if hasattr(g, 'start_time'):
-        elapsed = time.time() - g.start_time
-        # Add response time header
-        response.headers['X-Response-Time'] = f"{elapsed*1000:.2f}ms"
-        
-        # Log slow requests
-        if elapsed > 0.5:
-            app.logger.warning(f'Slow request: {request.path} took {elapsed:.3f}s')
-    return response
 
 # ============================================================================
 # APP CONFIG
 # ============================================================================
-
 app.secret_key = os.getenv("SECRET_KEY", "dev-secret")
 
 app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv(
@@ -64,38 +49,70 @@ swagger = Swagger(app)
 # ============================================================================
 # JWT CONFIG
 # ============================================================================
-
 app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY", "jwt-secret")
 app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(minutes=30)
 
 # ============================================================================
+# DUMMY REDIS CLASS (DEFINED BEFORE USE)
+# ============================================================================
+class DummyRedis:
+    """Fallback Redis client when Redis is unavailable"""
+    def __init__(self):
+        self._data = {}
+    
+    def get(self, key):
+        return self._data.get(key)
+    
+    def setex(self, key, time, value):
+        self._data[key] = value
+    
+    def delete(self, key):
+        if key in self._data:
+            del self._data[key]
+    
+    def ping(self):
+        return True
+    
+    def lpush(self, key, value):
+        return 1
+    
+    def ltrim(self, key, start, end):
+        return True
+    
+    def publish(self, channel, message):
+        return 0
+
+# ============================================================================
 # REDIS CONFIG
 # ============================================================================
-
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 
 try:
     redis_client = redis.from_url(REDIS_URL)
     redis_client.ping()
-    print("✅ Redis connected")
-except:
-    class DummyRedis:
-        def __init__(self):
-            self._data = {}
-        def get(self, key): return self._data.get(key)
-        def setex(self, key, time, value): self._data[key] = value
-        def delete(self, key): 
-            if key in self._data: del self._data[key]
-        def ping(self): return True
-        def publish(self, channel, message): return 0
+    print("✅ Redis connected successfully")
+    is_redis_available = True
+except Exception as e:
+    print(f"⚠️ Redis connection failed: {e}")
+    print("⚠️ Running in degraded mode without Redis")
     redis_client = DummyRedis()
+    is_redis_available = False
 
-task_queue = Queue(connection=redis_client) if not isinstance(redis_client, DummyRedis) else None
+# Initialize task queue (only if Redis is available)
+if is_redis_available:
+    try:
+        task_queue = Queue(connection=redis_client)
+        print("✅ Task queue initialized")
+    except:
+        task_queue = None
+        print("⚠️ Task queue failed to initialize")
+else:
+    task_queue = None
+    print("⚠️ Task queue disabled (no Redis)")
 
 # ============================================================================
 # EXTENSIONS
 # ============================================================================
-
 db.init_app(app)
 bcrypt = Bcrypt(app)
 
@@ -105,14 +122,37 @@ login_manager.login_view = "login"
 
 jwt = JWTManager(app)
 
-limiter = Limiter(get_remote_address, app=app, default_limits=["200 per day", "50 per hour"])
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["200 per day", "50 per hour"]
+)
 
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
+socketio = SocketIO(
+    app,
+    cors_allowed_origins="*",
+    async_mode="eventlet"
+)
+
+# ============================================================================
+# PERFORMANCE MIDDLEWARE
+# ============================================================================
+@app.before_request
+def before_request():
+    g.start_time = time.time()
+
+@app.after_request
+def after_request(response):
+    if hasattr(g, 'start_time'):
+        elapsed = time.time() - g.start_time
+        response.headers['X-Response-Time'] = f"{elapsed*1000:.2f}ms"
+        if elapsed > 1:
+            app.logger.warning(f'Slow request: {request.path} took {elapsed:.3f}s')
+    return response
 
 # ============================================================================
 # LOGIN MANAGER
 # ============================================================================
-
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
@@ -120,82 +160,109 @@ def load_user(user_id):
 # ============================================================================
 # REDIS EVENT SYSTEM
 # ============================================================================
-
 def publish_event(event):
-    try:
-        if not isinstance(redis_client, DummyRedis):
+    """Publish event to Redis channel"""
+    if is_redis_available:
+        try:
             redis_client.publish("todo_events", event)
-    except:
-        pass
+        except:
+            pass
 
 def redis_listener():
-    try:
-        if not isinstance(redis_client, DummyRedis):
+    """Listen for Redis events"""
+    if is_redis_available:
+        try:
             pubsub = redis_client.pubsub()
             pubsub.subscribe("todo_events")
             for message in pubsub.listen():
                 if message["type"] == "message":
                     socketio.emit("todo_update")
-    except:
-        pass
+        except:
+            pass
 
 def start_event_listener():
-    if not isinstance(redis_client, DummyRedis):
+    """Start Redis event listener thread"""
+    if is_redis_available:
         thread = threading.Thread(target=redis_listener)
         thread.daemon = True
         thread.start()
+        print("✅ Event listener started")
 
 # ============================================================================
 # CACHE SYSTEM
 # ============================================================================
-
 def get_cached_todos(user_id):
+    """Get cached todos"""
     cache_key = f"todos:{user_id}"
-    try:
-        cached = redis_client.get(cache_key)
-        if cached:
-            return json.loads(cached)
-    except:
-        pass
+    
+    if is_redis_available:
+        try:
+            cached = redis_client.get(cache_key)
+            if cached:
+                return json.loads(cached)
+        except:
+            pass
     
     todos = Todo.query.filter_by(user_id=user_id).all()
-    result = [{"id": t.id, "title": t.title, "desc": t.desc, "completed": t.completed} for t in todos]
+    result = [
+        {
+            "id": t.id,
+            "title": t.title,
+            "desc": t.desc,
+            "completed": t.completed
+        }
+        for t in todos
+    ]
     
-    try:
-        redis_client.setex(cache_key, 60, json.dumps(result))
-    except:
-        pass
+    if is_redis_available:
+        try:
+            redis_client.setex(cache_key, 60, json.dumps(result))
+        except:
+            pass
+    
     return result
 
 def invalidate_cache(user_id):
-    try:
-        redis_client.delete(f"todos:{user_id}")
-    except:
-        pass
+    """Invalidate cache"""
+    if is_redis_available:
+        try:
+            redis_client.delete(f"todos:{user_id}")
+        except:
+            pass
 
+# ============================================================================
+# BACKGROUND JOB
+# ============================================================================
 def log_event(event):
+    """Background job to log events"""
     print("Background job:", event)
 
 # ============================================================================
-# HEALTH CHECK (KUBERNETES READY)
+# HEALTH CHECK ENDPOINTS
 # ============================================================================
-
 @app.route('/health', methods=['GET'])
 def health_check():
+    """Health check endpoint"""
     return jsonify({
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
-        "service": "todo-saas"
+        "service": "todo-saas",
+        "redis_available": is_redis_available
     }), 200
+
+@app.route('/ready', methods=['GET'])
+def readiness_probe():
+    """Readiness probe"""
+    return jsonify({"status": "ready"}), 200
 
 @app.route('/metrics', methods=['GET'])
 def metrics_endpoint():
+    """Prometheus metrics endpoint"""
     return "Prometheus metrics available at /metrics"
 
 # ============================================================================
 # API ROUTES
 # ============================================================================
-
 @app.route("/api/login", methods=["POST"])
 @limiter.limit("5 per minute")
 def api_login():
@@ -218,7 +285,15 @@ def get_todos():
         "page": page,
         "limit": limit,
         "total": todos.total,
-        "data": [{"id": t.id, "title": t.title, "desc": t.desc, "completed": t.completed} for t in todos.items]
+        "data": [
+            {
+                "id": t.id,
+                "title": t.title,
+                "desc": t.desc,
+                "completed": t.completed
+            }
+            for t in todos.items
+        ]
     })
 
 @app.route("/api/todos", methods=["POST"])
@@ -226,7 +301,11 @@ def get_todos():
 def create_todo_api():
     user_id = get_jwt_identity()
     data = request.get_json()
-    todo = Todo(title=data.get("title"), desc=data.get("desc"), user_id=user_id)
+    todo = Todo(
+        title=data.get("title"),
+        desc=data.get("desc"),
+        user_id=user_id
+    )
     db.session.add(todo)
     db.session.commit()
     invalidate_cache(user_id)
@@ -238,7 +317,6 @@ def create_todo_api():
 # ============================================================================
 # WEB ROUTES
 # ============================================================================
-
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
     if request.method == "POST":
@@ -271,13 +349,18 @@ def login():
 @login_required
 def logout():
     logout_user()
+    flash("You have been logged out successfully", "info")
     return redirect("/login")
 
 @app.route("/", methods=["GET", "POST"])
 @login_required
 def index():
     if request.method == "POST":
-        todo = Todo(title=request.form["title"], desc=request.form["desc"], user_id=current_user.id)
+        todo = Todo(
+            title=request.form["title"],
+            desc=request.form["desc"],
+            user_id=current_user.id
+        )
         db.session.add(todo)
         db.session.commit()
         invalidate_cache(current_user.id)
@@ -297,23 +380,29 @@ def index():
 @login_required
 def update(id):
     todo = Todo.query.filter_by(id=id, user_id=current_user.id).first_or_404()
+    
     if request.method == "POST":
         title = request.form.get("title", "").strip()
         desc = request.form.get("desc", "").strip()
+        
         if not title:
             flash("Title is required!", "danger")
             return redirect(f"/update/{id}")
+        
         todo.title = title
         todo.desc = desc
+        
         try:
             db.session.commit()
             invalidate_cache(current_user.id)
             publish_event("todo_updated")
             flash("Task updated successfully!", "success")
             return redirect("/")
-        except:
+        except Exception as e:
             db.session.rollback()
-            flash("Error updating task", "danger")
+            flash(f"Error updating task: {str(e)}", "danger")
+            return redirect(f"/update/{id}")
+    
     return render_template("update.html", todo=todo)
 
 @app.route("/delete/<int:id>")
@@ -324,6 +413,7 @@ def delete(id):
     db.session.commit()
     invalidate_cache(current_user.id)
     publish_event("todo_deleted")
+    flash("Task deleted successfully!", "success")
     return redirect("/")
 
 @app.route("/toggle/<int:id>")
@@ -334,6 +424,8 @@ def toggle(id):
     db.session.commit()
     invalidate_cache(current_user.id)
     publish_event("todo_updated")
+    status = "completed" if todo.completed else "pending"
+    flash(f"Task marked as {status}!", "success")
     return redirect("/")
 
 @app.route("/api-docs")
@@ -341,21 +433,50 @@ def api_docs():
     return render_template("api_docs.html")
 
 # ============================================================================
+# ERROR HANDLERS
+# ============================================================================
+@app.errorhandler(404)
+def not_found(error):
+    if request.path.startswith('/api/'):
+        return jsonify({"error": "Resource not found"}), 404
+    return "<h1>404 - Page Not Found</h1><p>The page you're looking for doesn't exist.</p>", 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    app.logger.error(f"Internal server error: {error}")
+    db.session.rollback()
+    if request.path.startswith('/api/'):
+        return jsonify({"error": "Internal server error"}), 500
+    return "<h1>500 - Server Error</h1><p>Something went wrong. Please try again later.</p>", 500
+
+# ============================================================================
 # DATABASE SETUP
 # ============================================================================
-
 with app.app_context():
-    db.create_all()
-    print("✅ Database ready")
+    try:
+        db.create_all()
+        print("✅ Database tables created successfully")
+    except Exception as e:
+        print(f"⚠️ Database creation error: {e}")
 
 # ============================================================================
 # START SERVER
 # ============================================================================
-
 if __name__ == "__main__":
     start_event_listener()
-    print("\n" + "="*50)
-    print("🚀 Todo SaaS with Prometheus")
-    print("📊 Metrics: http://localhost:5000/metrics")
-    print("="*50 + "\n")
+    
+    print("\n" + "="*60)
+    print("🚀 Todo SaaS Platform - Production Ready")
+    print("="*60)
+    print(f"📍 Web UI:        http://localhost:5000")
+    print(f"📝 Signup:        http://localhost:5000/signup")
+    print(f"🔐 Login:         http://localhost:5000/login")
+    print(f"📚 API Docs:      http://localhost:5000/api-docs")
+    print(f"📊 Metrics:       http://localhost:5000/metrics")
+    print(f"💚 Health Check:  http://localhost:5000/health")
+    print("="*60)
+    print(f"✅ Redis: {'Connected' if is_redis_available else 'Not available (degraded mode)'}")
+    print(f"✅ Task Queue: {'Enabled' if task_queue else 'Disabled'}")
+    print("="*60 + "\n")
+    
     socketio.run(app, host="0.0.0.0", port=5000, debug=True)
