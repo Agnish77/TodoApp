@@ -2,43 +2,181 @@
 {% block body %}
 
 <div class="container d-flex justify-content-center align-items-center" style="min-height:90vh;">
+  <div class="card shadow-lg border-0 p-4" style="max-width:450px;width:100%;">
+    
+    <h3 class="text-center mb-4 fw-bold text-success">
+      <i class="bi bi-person-plus-fill me-2"></i>Create Account
+    </h3>
 
-<div class="card shadow-lg border-0 p-4" style="max-width:420px;width:100%;">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category if category != 'message' else 'danger' }} alert-dismissible fade show" role="alert">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>{{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
 
-<h3 class="text-center mb-4 fw-bold text-success">
-Create Account
-</h3>
+    <form method="POST" id="signupForm">
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Username</label>
+        <div class="input-group">
+          <span class="input-group-text bg-light"><i class="bi bi-person"></i></span>
+          <input type="text" name="username" class="form-control" placeholder="Choose a username" required minlength="3" maxlength="20">
+        </div>
+        <div class="form-text">3-20 characters, letters and numbers only</div>
+      </div>
 
-<form method="POST">
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Password</label>
+        <div class="input-group">
+          <span class="input-group-text bg-light"><i class="bi bi-lock"></i></span>
+          <input type="password" name="password" id="password" class="form-control" placeholder="Create a password" required>
+          <button class="btn btn-outline-secondary" type="button" id="togglePassword">
+            <i class="bi bi-eye"></i>
+          </button>
+        </div>
+        <div class="form-text" id="passwordRequirements">
+          <small>Password must contain:</small>
+          <ul class="small mt-1 mb-0 ps-3">
+            <li id="req-length" class="text-muted">✓ 6-8 characters</li>
+            <li id="req-upper" class="text-muted">✓ At least 1 uppercase letter (A-Z)</li>
+            <li id="req-lower" class="text-muted">✓ At least 1 lowercase letter (a-z)</li>
+            <li id="req-number" class="text-muted">✓ At least 1 number (0-9)</li>
+            <li id="req-special" class="text-muted">✓ At least 1 special character (@$!%*?&)</li>
+          </ul>
+        </div>
+      </div>
 
-<div class="mb-3">
-<label class="form-label">Username</label>
-<input name="username" class="form-control" required>
+      <div class="mb-4">
+        <label class="form-label fw-semibold">Confirm Password</label>
+        <div class="input-group">
+          <span class="input-group-text bg-light"><i class="bi bi-shield-lock"></i></span>
+          <input type="password" name="confirm" id="confirmPassword" class="form-control" placeholder="Confirm your password" required>
+        </div>
+        <div id="passwordMatchMsg" class="form-text"></div>
+      </div>
+
+      <button type="submit" id="registerBtn" class="btn btn-success w-100 fw-semibold" disabled>
+        <i class="bi bi-check-circle me-2"></i>Register
+      </button>
+    </form>
+
+    <p class="text-center mt-4 small text-muted">
+      Already have an account? <a href="/login" class="text-success fw-semibold">Login here</a>
+    </p>
+  </div>
 </div>
 
-<div class="mb-3">
-<label class="form-label">Password</label>
-<input type="password" name="password" class="form-control" required>
-</div>
+<script>
+// Password validation function
+function validatePassword(password) {
+  const requirements = {
+    length: password.length >= 6 && password.length <= 8,
+    upper: /[A-Z]/.test(password),
+    lower: /[a-z]/.test(password),
+    number: /[0-9]/.test(password),
+    special: /[@$!%*?&]/.test(password)
+  };
+  return requirements;
+}
 
-<div class="mb-4">
-<label class="form-label">Confirm Password</label>
-<input type="password" name="confirm" class="form-control" required>
-</div>
+// Update UI based on password validation
+function updatePasswordUI() {
+  const password = document.getElementById('password').value;
+  const requirements = validatePassword(password);
+  
+  // Update requirement list colors
+  const lengthReq = document.getElementById('req-length');
+  const upperReq = document.getElementById('req-upper');
+  const lowerReq = document.getElementById('req-lower');
+  const numberReq = document.getElementById('req-number');
+  const specialReq = document.getElementById('req-special');
+  
+  lengthReq.className = requirements.length ? 'text-success' : 'text-muted';
+  upperReq.className = requirements.upper ? 'text-success' : 'text-muted';
+  lowerReq.className = requirements.lower ? 'text-success' : 'text-muted';
+  numberReq.className = requirements.number ? 'text-success' : 'text-muted';
+  specialReq.className = requirements.special ? 'text-success' : 'text-muted';
+  
+  // Update checkmark icons
+  lengthReq.innerHTML = (requirements.length ? '✓' : '○') + ' 6-8 characters';
+  upperReq.innerHTML = (requirements.upper ? '✓' : '○') + ' At least 1 uppercase letter (A-Z)';
+  lowerReq.innerHTML = (requirements.lower ? '✓' : '○') + ' At least 1 lowercase letter (a-z)';
+  numberReq.innerHTML = (requirements.number ? '✓' : '○') + ' At least 1 number (0-9)';
+  specialReq.innerHTML = (requirements.special ? '✓' : '○') + ' At least 1 special character (@$!%*?&)';
+  
+  return Object.values(requirements).every(v => v === true);
+}
 
-<button class="btn btn-success w-100">
-Register
-</button>
+// Check if passwords match
+function checkPasswordsMatch() {
+  const password = document.getElementById('password').value;
+  const confirm = document.getElementById('confirmPassword').value;
+  const matchMsg = document.getElementById('passwordMatchMsg');
+  
+  if (confirm.length === 0) {
+    matchMsg.innerHTML = '';
+    matchMsg.className = 'form-text';
+    return false;
+  }
+  
+  if (password === confirm) {
+    matchMsg.innerHTML = '<i class="bi bi-check-circle-fill text-success"></i> <span class="text-success">Passwords match!</span>';
+    matchMsg.className = 'form-text text-success';
+    return true;
+  } else {
+    matchMsg.innerHTML = '<i class="bi bi-x-circle-fill text-danger"></i> <span class="text-danger">Passwords do not match</span>';
+    matchMsg.className = 'form-text text-danger';
+    return false;
+  }
+}
 
-</form>
+// Enable/disable register button
+function updateRegisterButton() {
+  const isPasswordValid = updatePasswordUI();
+  const doPasswordsMatch = checkPasswordsMatch();
+  const username = document.querySelector('input[name="username"]').value;
+  const isUsernameValid = username.length >= 3 && username.length <= 20 && /^[a-zA-Z0-9]+$/.test(username);
+  
+  const registerBtn = document.getElementById('registerBtn');
+  registerBtn.disabled = !(isPasswordValid && doPasswordsMatch && isUsernameValid);
+}
 
-<p class="text-center mt-4 small">
-Already have account?
-<a href="/login">Login</a>
-</p>
+// Toggle password visibility
+document.getElementById('togglePassword').addEventListener('click', function() {
+  const passwordInput = document.getElementById('password');
+  const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+  passwordInput.setAttribute('type', type);
+  this.querySelector('i').classList.toggle('bi-eye');
+  this.querySelector('i').classList.toggle('bi-eye-slash');
+});
 
-</div>
+// Add event listeners
+document.getElementById('password').addEventListener('input', updateRegisterButton);
+document.getElementById('confirmPassword').addEventListener('input', updateRegisterButton);
+document.querySelector('input[name="username"]').addEventListener('input', updateRegisterButton);
 
-</div>
+// Initial check
+updateRegisterButton();
+
+// Username validation on input
+document.querySelector('input[name="username"]').addEventListener('input', function(e) {
+  const username = e.target.value;
+  const usernameHelp = document.querySelector('.input-group + .form-text');
+  if (username && !/^[a-zA-Z0-9]+$/.test(username)) {
+    this.setCustomValidity('Username can only contain letters and numbers');
+    this.style.borderColor = '#dc3545';
+  } else if (username.length < 3) {
+    this.setCustomValidity('Username must be at least 3 characters');
+    this.style.borderColor = '#dc3545';
+  } else {
+    this.setCustomValidity('');
+    this.style.borderColor = '#198754';
+  }
+});
+</script>
 
 {% endblock %}
