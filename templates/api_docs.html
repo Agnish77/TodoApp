@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block body %}
+
+<div class="container my-5">
+
+<h2 class="mb-4">API Documentation</h2>
+
+<table class="table table-bordered">
+
+<thead>
+<tr>
+<th>Method</th>
+<th>Endpoint</th>
+<th>Description</th>
+</tr>
+</thead>
+
+<tbody>
+
+<tr>
+<td>POST</td>
+<td>/api/login</td>
+<td>Get JWT token</td>
+</tr>
+
+<tr>
+<td>GET</td>
+<td>/api/todos</td>
+<td>Get user todos (JWT required)</td>
+</tr>
+
+<tr>
+<td>POST</td>
+<td>/api/todos</td>
+<td>Create todo</td>
+</tr>
+
+</tbody>
+
+</table>
+
+</div>
+
+{% endblock %}
