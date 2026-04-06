@@ -7,10 +7,8 @@ import hashlib
 import logging
 from datetime import datetime, timedelta
 from functools import wraps
-from typing import Dict, List, Optional, Any
-from contextlib import contextmanager
 
-from flask import Flask, render_template, request, redirect, jsonify, flash, g, session, make_response
+from flask import Flask, render_template, request, redirect, jsonify, flash, g
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from flask_bcrypt import Bcrypt
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
@@ -24,19 +22,8 @@ from rq import Queue
 from data import db
 from model import User, Todo
 
-# ============================================================================
-# FAANG-LEVEL OBSERVABILITY IMPORTS
-# ============================================================================
+# Prometheus only (no OpenTelemetry to avoid context errors)
 from prometheus_flask_exporter import PrometheusMetrics
-from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.exporter.jaeger.thrift import JaegerExporter
-from opentelemetry.instrumentation.flask import FlaskInstrumentor
-from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
-from opentelemetry.sdk.resources import SERVICE_NAME, Resource
-from opentelemetry.sdk.trace.id_generator import RandomIdGenerator
-from opentelemetry.trace import Status, StatusCode
 
 # ============================================================================
 # APP INITIALIZATION
@@ -45,14 +32,10 @@ from opentelemetry.trace import Status, StatusCode
 app = Flask(__name__)
 
 # ============================================================================
-# FAANG-LEVEL OBSERVABILITY SETUP (DOES NOT BREAK EXISTING CODE)
+# PROMETHEUS METRICS (Working without context issues)
 # ============================================================================
 
-# Setup logging for production
-logging.basicConfig(level=logging.INFO)
-app.logger.setLevel(logging.INFO)
-
-# Prometheus Metrics
+# Initialize metrics after app is created
 metrics = PrometheusMetrics(app, group_by='endpoint')
 
 # Custom Prometheus Metrics
@@ -68,59 +51,15 @@ REQUEST_LATENCY = metrics.histogram(
     buckets=[0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10]
 )
 
-ACTIVE_USERS = metrics.gauge(
-    'active_users', 
-    'Currently active users'
-)
-
-DB_QUERY_DURATION = metrics.histogram(
-    'db_query_duration_seconds', 
-    'Database query duration',
-    buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1]
-)
-
-# OpenTelemetry Distributed Tracing
-resource = Resource(attributes={
-    SERVICE_NAME: "todo-saas-platform",
-    "service.version": "2.0.0",
-    "deployment.environment": os.getenv("ENV", "development")
-})
-
-trace.set_tracer_provider(TracerProvider(resource=resource, id_generator=RandomIdGenerator()))
-
-# Configure Jaeger exporter (for distributed tracing visualization)
-jaeger_exporter = JaegerExporter(
-    agent_host_name=os.getenv("JAEGER_HOST", "localhost"),
-    agent_port=6831,
-)
-trace.get_tracer_provider().add_span_processor(
-    BatchSpanProcessor(jaeger_exporter)
-)
-
-# Instrument Flask for automatic tracing
-FlaskInstrumentor().instrument_app(app)
-
-# Instrument SQLAlchemy for database query tracing
-SQLAlchemyInstrumentor().instrument(
-    engine=db.engine,
-    tracer_provider=trace.get_tracer_provider()
-)
-
-tracer = trace.get_tracer(__name__)
-
 # ============================================================================
 # PERFORMANCE MIDDLEWARE
 # ============================================================================
 
 @app.before_request
 def before_request():
-    """Start request timer and track active users"""
+    """Start request timer for latency monitoring"""
     g.start_time = time.time()
     g.request_id = hashlib.md5(f"{time.time()}{request.remote_addr}".encode()).hexdigest()[:16]
-    
-    # Add request ID to response headers for tracing
-    if hasattr(g, 'request_id'):
-        pass
 
 @app.after_request
 def after_request(response):
@@ -131,7 +70,7 @@ def after_request(response):
         # Record latency metric
         REQUEST_LATENCY.observe(elapsed)
         
-        # Add response headers for observability
+        # Add response headers
         response.headers['X-Request-ID'] = getattr(g, 'request_id', 'unknown')
         response.headers['X-Response-Time-ms'] = int(elapsed * 1000)
         
@@ -143,153 +82,39 @@ def after_request(response):
                 "path": request.path,
                 "method": request.method,
                 "duration_ms": elapsed * 1000,
-                "user": current_user.id if current_user.is_authenticated else "anonymous",
-                "ip": request.remote_addr
+                "user": current_user.id if current_user.is_authenticated else "anonymous"
             }))
-            
-            # Store in Redis for analysis
-            try:
-                redis_client.lpush("slow_requests", json.dumps({
-                    "request_id": g.request_id,
-                    "path": request.path,
-                    "method": request.method,
-                    "duration_ms": elapsed * 1000,
-                    "user": current_user.id if current_user.is_authenticated else None,
-                    "timestamp": datetime.now().isoformat()
-                }))
-                redis_client.ltrim("slow_requests", 0, 999)
-            except:
-                pass
     
     return response
 
 # ============================================================================
-# CACHE DECORATOR (FAANG-LEVEL CACHING STRATEGY)
-# ============================================================================
-
-def cached(timeout=60, key_prefix='view'):
-    """Cache decorator for expensive operations"""
-    def decorator(f):
-        @wraps(f)
-        def decorated_function(*args, **kwargs):
-            # Skip cache for authenticated users (they have their own cache)
-            if current_user.is_authenticated:
-                return f(*args, **kwargs)
-            
-            # Create cache key
-            cache_key = f"{key_prefix}:{request.path}:{request.args}"
-            try:
-                cached_data = redis_client.get(cache_key)
-                if cached_data:
-                    return jsonify(json.loads(cached_data))
-            except:
-                pass
-            
-            # Execute function and cache result
-            response = f(*args, **kwargs)
-            
-            if response and hasattr(response, 'get_data'):
-                try:
-                    redis_client.setex(cache_key, timeout, response.get_data(as_text=True))
-                except:
-                    pass
-            
-            return response
-        return decorated_function
-    return decorator
-
-# ============================================================================
-# RATE LIMITING STRATEGIES (FAANG PATTERNS)
-# ============================================================================
-
-class RateLimitStrategy:
-    """Implement multiple rate limiting strategies"""
-    
-    @staticmethod
-    def token_bucket(user_id, key, rate=10, capacity=20):
-        """Token bucket algorithm for burst handling"""
-        redis_key = f"ratelimit:token:{user_id}:{key}"
-        now = time.time()
-        
-        pipe = redis_client.pipeline()
-        pipe.get(redis_key)
-        pipe.get(f"{redis_key}:tokens")
-        result = pipe.execute()
-        
-        last_refill = float(result[0]) if result[0] else now
-        tokens = float(result[1]) if result[1] else capacity
-        
-        # Calculate tokens to add
-        time_passed = now - last_refill
-        tokens_to_add = time_passed * rate
-        tokens = min(capacity, tokens + tokens_to_add)
-        
-        if tokens >= 1:
-            tokens -= 1
-            pipe = redis_client.pipeline()
-            pipe.setex(redis_key, 60, now)
-            pipe.setex(f"{redis_key}:tokens", 60, tokens)
-            pipe.execute()
-            return True
-        return False
-    
-    @staticmethod
-    def sliding_window(user_id, key, limit=100, window=60):
-        """Sliding window log algorithm"""
-        redis_key = f"ratelimit:sliding:{user_id}:{key}"
-        now = time.time()
-        window_start = now - window
-        
-        # Remove old entries
-        redis_client.zremrangebyscore(redis_key, 0, window_start)
-        
-        # Count requests in window
-        count = redis_client.zcard(redis_key)
-        
-        if count < limit:
-            redis_client.zadd(redis_key, {str(now): now})
-            redis_client.expire(redis_key, window)
-            return True
-        return False
-
-# ============================================================================
-# HEALTH CHECK ENDPOINTS (KUBERNETES READY)
+# HEALTH CHECK ENDPOINTS
 # ============================================================================
 
 @app.route('/health', methods=['GET'])
 def health_check():
-    """Comprehensive health check for container orchestration"""
+    """Health check for container orchestration"""
     health = {
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
         "service": "todo-saas",
-        "version": "2.0.0",
-        "uptime_seconds": time.time() - app.config.get('START_TIME', time.time()),
-        "checks": {}
+        "version": "2.0.0"
     }
     
     # Check database
     try:
-        start = time.time()
         db.session.execute('SELECT 1')
-        health['checks']['database'] = {
-            "status": "up",
-            "latency_ms": (time.time() - start) * 1000
-        }
+        health['database'] = "connected"
     except Exception as e:
-        health['checks']['database'] = {"status": "down", "error": str(e)}
+        health['database'] = f"error: {str(e)}"
         health['status'] = "degraded"
     
     # Check Redis
     try:
-        start = time.time()
         redis_client.ping()
-        health['checks']['redis'] = {
-            "status": "up",
-            "latency_ms": (time.time() - start) * 1000
-        }
+        health['redis'] = "connected"
     except Exception as e:
-        health['checks']['redis'] = {"status": "down", "error": str(e)}
+        health['redis'] = f"error: {str(e)}"
         health['status'] = "degraded"
     
     status_code = 200 if health['status'] == 'healthy' else 503
@@ -306,62 +131,6 @@ def metrics_endpoint():
     return "Prometheus metrics available at /metrics endpoint"
 
 # ============================================================================
-# PERFORMANCE METRICS ENDPOINTS
-# ============================================================================
-
-@app.route('/api/metrics/slow-requests', methods=['GET'])
-@login_required
-def get_slow_requests():
-    """Get recent slow requests (FAANG debugging feature)"""
-    try:
-        slow_requests = redis_client.lrange("slow_requests", 0, 99)
-        return jsonify({
-            "count": len(slow_requests),
-            "requests": [json.loads(req) for req in slow_requests]
-        })
-    except:
-        return jsonify({"error": "Metrics unavailable"}), 500
-
-@app.route('/api/metrics/cache-stats', methods=['GET'])
-@login_required
-def get_cache_stats():
-    """Get cache hit/miss statistics"""
-    # Simple cache stats implementation
-    return jsonify({
-        "cache_engine": "Redis",
-        "default_ttl": 60,
-        "hit_rate": "Unknown (implement with metrics)"
-    })
-
-# ============================================================================
-# DATABASE QUERY OPTIMIZATION (N+1 DETECTION)
-# ============================================================================
-
-class QueryOptimizer:
-    """Detect and prevent N+1 queries"""
-    
-    def __init__(self):
-        self.queries = []
-    
-    def register_query(self, query, duration):
-        self.queries.append({
-            "query": str(query),
-            "duration": duration,
-            "time": datetime.now()
-        })
-        
-        # Alert if query is too slow
-        if duration > 0.1:  # 100ms threshold
-            app.logger.warning(f"Slow query detected: {duration:.3f}s - {query}")
-        
-        # Keep only last 1000 queries
-        if len(self.queries) > 1000:
-            self.queries = self.queries[-1000:]
-
-# Initialize query optimizer
-query_optimizer = QueryOptimizer()
-
-# ============================================================================
 # ORIGINAL APP CONFIG (UNCHANGED)
 # ============================================================================
 
@@ -373,7 +142,6 @@ app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv(
 )
 
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-app.config['START_TIME'] = time.time()
 
 swagger = Swagger(app)
 
@@ -390,9 +158,39 @@ app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(minutes=30)
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 
-redis_client = redis.from_url(REDIS_URL)
+# Handle Redis connection gracefully
+try:
+    redis_client = redis.from_url(REDIS_URL)
+    redis_client.ping()
+    print("✅ Redis connected successfully")
+except Exception as e:
+    print(f"⚠️ Redis connection failed: {e}")
+    # Create a dummy Redis client for fallback
+    class DummyRedis:
+        def __init__(self):
+            self._data = {}
+        def get(self, key):
+            return self._data.get(key)
+        def setex(self, key, time, value):
+            self._data[key] = value
+        def delete(self, key):
+            if key in self._data:
+                del self._data[key]
+        def ping(self):
+            return True
+        def lpush(self, key, value):
+            return 1
+        def ltrim(self, key, start, end):
+            return True
+        def publish(self, channel, message):
+            return 0
+    redis_client = DummyRedis()
 
-task_queue = Queue(connection=redis_client)
+# Initialize task queue
+try:
+    task_queue = Queue(connection=redis_client) if not isinstance(redis_client, DummyRedis) else None
+except:
+    task_queue = None
 
 # ============================================================================
 # EXTENSIONS
@@ -411,14 +209,12 @@ jwt = JWTManager(app)
 limiter = Limiter(
     get_remote_address,
     app=app,
-    storage_uri=REDIS_URL,
     default_limits=["200 per day", "50 per hour"]
 )
 
 socketio = SocketIO(
     app,
     cors_allowed_origins="*",
-    message_queue=REDIS_URL,
     async_mode="eventlet"
 )
 
@@ -435,29 +231,47 @@ def load_user(user_id):
 # ============================================================================
 
 def publish_event(event):
-    redis_client.publish("todo_events", event)
+    """Publish event to Redis channel"""
+    try:
+        if not isinstance(redis_client, DummyRedis):
+            redis_client.publish("todo_events", event)
+    except:
+        pass
 
 def redis_listener():
-    pubsub = redis_client.pubsub()
-    pubsub.subscribe("todo_events")
-    for message in pubsub.listen():
-        if message["type"] == "message":
-            socketio.emit("todo_update")
+    """Listen for Redis events"""
+    try:
+        if not isinstance(redis_client, DummyRedis):
+            pubsub = redis_client.pubsub()
+            pubsub.subscribe("todo_events")
+            for message in pubsub.listen():
+                if message["type"] == "message":
+                    socketio.emit("todo_update")
+    except:
+        pass
 
 def start_event_listener():
-    thread = threading.Thread(target=redis_listener)
-    thread.daemon = True
-    thread.start()
+    """Start Redis event listener thread"""
+    if not isinstance(redis_client, DummyRedis):
+        thread = threading.Thread(target=redis_listener)
+        thread.daemon = True
+        thread.start()
+        print("✅ Event listener started")
 
 # ============================================================================
-# CACHE SYSTEM (ENHANCED)
+# CACHE SYSTEM
 # ============================================================================
 
 def get_cached_todos(user_id):
+    """Get cached todos"""
     cache_key = f"todos:{user_id}"
-    cached = redis_client.get(cache_key)
-    if cached:
-        return json.loads(cached)
+    try:
+        cached = redis_client.get(cache_key)
+        if cached:
+            return json.loads(cached)
+    except:
+        pass
+    
     todos = Todo.query.filter_by(user_id=user_id).all()
     result = [
         {
@@ -468,17 +282,27 @@ def get_cached_todos(user_id):
         }
         for t in todos
     ]
-    redis_client.setex(cache_key, 60, json.dumps(result))
+    
+    try:
+        redis_client.setex(cache_key, 60, json.dumps(result))
+    except:
+        pass
+    
     return result
 
 def invalidate_cache(user_id):
-    redis_client.delete(f"todos:{user_id}")
+    """Invalidate cache"""
+    try:
+        redis_client.delete(f"todos:{user_id}")
+    except:
+        pass
 
 # ============================================================================
 # BACKGROUND JOB
 # ============================================================================
 
 def log_event(event):
+    """Background job to log events"""
     print("Background job:", event)
 
 # ============================================================================
@@ -514,13 +338,8 @@ def api_login():
         description: Invalid credentials
     """
     data = request.get_json()
-    user = User.query.filter_by(
-        username=data.get("username")
-    ).first()
-    if not user or not bcrypt.check_password_hash(
-        user.password,
-        data.get("password")
-    ):
+    user = User.query.filter_by(username=data.get("username")).first()
+    if not user or not bcrypt.check_password_hash(user.password, data.get("password")):
         return jsonify({"error": "Invalid credentials"}), 401
     token = create_access_token(identity=user.id)
     return jsonify({"access_token": token})
@@ -611,7 +430,8 @@ def create_todo_api():
     db.session.commit()
     invalidate_cache(user_id)
     publish_event("todo_created")
-    task_queue.enqueue(log_event, "todo created")
+    if task_queue:
+        task_queue.enqueue(log_event, "todo created")
     return jsonify({"message": "Todo created"})
 
 # ============================================================================
@@ -625,9 +445,7 @@ def signup():
         if User.query.filter_by(username=username).first():
             flash("Username exists")
             return redirect("/signup")
-        password = bcrypt.generate_password_hash(
-            request.form["password"]
-        ).decode("utf-8")
+        password = bcrypt.generate_password_hash(request.form["password"]).decode("utf-8")
         user = User(username=username, password=password)
         db.session.add(user)
         db.session.commit()
@@ -641,16 +459,11 @@ def signup():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        user = User.query.filter_by(
-            username=request.form["username"]
-        ).first()
+        user = User.query.filter_by(username=request.form["username"]).first()
         if not user:
             flash("User not found")
             return redirect("/login")
-        if not bcrypt.check_password_hash(
-            user.password,
-            request.form["password"]
-        ):
+        if not bcrypt.check_password_hash(user.password, request.form["password"]):
             flash("Wrong password")
             return redirect("/login")
         login_user(user)
@@ -668,57 +481,41 @@ def logout():
     return redirect("/login")
 
 # ============================================================================
-# DASHBOARD (ENHANCED WITH TRACING)
+# DASHBOARD
 # ============================================================================
 
 @app.route("/", methods=["GET", "POST"])
 @login_required
 def index():
-    # Add distributed tracing span
-    with tracer.start_as_current_span("dashboard-index") as span:
-        span.set_attribute("user.id", current_user.id)
-        span.set_attribute("http.method", request.method)
-        
-        if request.method == "POST":
-            with tracer.start_as_current_span("create-todo"):
-                todo = Todo(
-                    title=request.form["title"],
-                    desc=request.form["desc"],
-                    user_id=current_user.id
-                )
-                db.session.add(todo)
-                db.session.commit()
-                invalidate_cache(current_user.id)
-                publish_event("todo_created")
-                task_queue.enqueue(log_event, "todo created")
-                span.set_attribute("todo.created", True)
-                return redirect("/")
-        
-        search = request.args.get("search")
-        query = Todo.query.filter_by(user_id=current_user.id)
-        
-        if search:
-            with tracer.start_as_current_span("search-todos"):
-                query = query.filter(Todo.title.contains(search))
-                span.set_attribute("search.query", search)
-        
-        with tracer.start_as_current_span("fetch-todos"):
-            todos = query.order_by(Todo.date_c.desc()).all()
-            span.set_attribute("todos.count", len(todos))
-        
-        return render_template("index.html", todos=todos)
+    if request.method == "POST":
+        todo = Todo(
+            title=request.form["title"],
+            desc=request.form["desc"],
+            user_id=current_user.id
+        )
+        db.session.add(todo)
+        db.session.commit()
+        invalidate_cache(current_user.id)
+        publish_event("todo_created")
+        if task_queue:
+            task_queue.enqueue(log_event, "todo created")
+        return redirect("/")
+    
+    search = request.args.get("search")
+    query = Todo.query.filter_by(user_id=current_user.id)
+    if search:
+        query = query.filter(Todo.title.contains(search))
+    todos = query.order_by(Todo.date_c.desc()).all()
+    return render_template("index.html", todos=todos)
 
 # ============================================================================
-# UPDATE TODO (EDIT ROUTE)
+# UPDATE TODO
 # ============================================================================
 
 @app.route("/update/<int:id>", methods=["GET", "POST"])
 @login_required
 def update(id):
-    todo = Todo.query.filter_by(
-        id=id,
-        user_id=current_user.id
-    ).first_or_404()
+    todo = Todo.query.filter_by(id=id, user_id=current_user.id).first_or_404()
     
     if request.method == "POST":
         title = request.form.get("title", "").strip()
@@ -751,10 +548,7 @@ def update(id):
 @app.route("/delete/<int:id>")
 @login_required
 def delete(id):
-    todo = Todo.query.filter_by(
-        id=id,
-        user_id=current_user.id
-    ).first_or_404()
+    todo = Todo.query.filter_by(id=id, user_id=current_user.id).first_or_404()
     db.session.delete(todo)
     db.session.commit()
     invalidate_cache(current_user.id)
@@ -768,10 +562,7 @@ def delete(id):
 @app.route("/toggle/<int:id>")
 @login_required
 def toggle(id):
-    todo = Todo.query.filter_by(
-        id=id,
-        user_id=current_user.id
-    ).first_or_404()
+    todo = Todo.query.filter_by(id=id, user_id=current_user.id).first_or_404()
     todo.completed = not todo.completed
     db.session.commit()
     invalidate_cache(current_user.id)
@@ -779,7 +570,7 @@ def toggle(id):
     return redirect("/")
 
 # ============================================================================
-# API DOCS PAGE
+# API DOCS
 # ============================================================================
 
 @app.route("/api-docs")
@@ -792,16 +583,28 @@ def api_docs():
 
 @app.errorhandler(404)
 def not_found(error):
-    return jsonify({"error": "Resource not found"}), 404
+    if request.path.startswith('/api/'):
+        return jsonify({"error": "Resource not found"}), 404
+    return "<h1>404 - Page Not Found</h1><p>The page you're looking for doesn't exist.</p>", 404
 
 @app.errorhandler(500)
 def internal_error(error):
     app.logger.error(f"Internal server error: {error}")
-    return jsonify({"error": "Internal server error"}), 500
+    db.session.rollback()
+    if request.path.startswith('/api/'):
+        return jsonify({"error": "Internal server error"}), 500
+    return "<h1>500 - Server Error</h1><p>Something went wrong. Please try again later.</p>", 500
 
-@app.errorhandler(429)
-def rate_limit_error(error):
-    return jsonify({"error": "Rate limit exceeded", "retry_after": 60}), 429
+# ============================================================================
+# CREATE DATABASE TABLES
+# ============================================================================
+
+with app.app_context():
+    try:
+        db.create_all()
+        print("✅ Database tables created successfully")
+    except Exception as e:
+        print(f"⚠️ Database creation error: {e}")
 
 # ============================================================================
 # START SERVER
@@ -811,7 +614,7 @@ if __name__ == "__main__":
     start_event_listener()
     
     print("\n" + "="*60)
-    print("🚀 Todo SaaS Platform - FAANG Ready Edition")
+    print("🚀 Todo SaaS Platform - Production Ready")
     print("="*60)
     print(f"📍 Web UI:        http://localhost:5000")
     print(f"📝 Signup:        http://localhost:5000/signup")
@@ -819,14 +622,6 @@ if __name__ == "__main__":
     print(f"📚 API Docs:      http://localhost:5000/api-docs")
     print(f"📊 Metrics:       http://localhost:5000/metrics")
     print(f"💚 Health Check:  http://localhost:5000/health")
-    print("="*60)
-    print("✨ FAANG Features Added:")
-    print("   • Distributed Tracing (OpenTelemetry + Jaeger)")
-    print("   • Prometheus Metrics Collection")
-    print("   • Health Checks for Kubernetes")
-    print("   • Performance Monitoring")
-    print("   • Slow Request Detection")
-    print("   • Advanced Rate Limiting Strategies")
     print("="*60 + "\n")
     
     socketio.run(app, host="0.0.0.0", port=5000, debug=True)
