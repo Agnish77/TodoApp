@@ -2,7 +2,7 @@
 {% block body %}
 
 <div class="container d-flex justify-content-center align-items-center" style="min-height: 90vh;">
-    <div class="card shadow-lg border-0" style="max-width: 420px; width: 100%; border-radius: 20px;" data-aos="fade-up">
+    <div class="card shadow-lg border-0" style="max-width: 420px; width: 100%;">
         <div class="card-body p-5">
             <div class="text-center mb-4">
                 <div class="bg-primary bg-opacity-10 rounded-circle p-3 d-inline-block mb-3">
@@ -15,7 +15,7 @@
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
                     {% for category, message in messages %}
-                        <div class="alert alert-{{ category if category != 'message' else 'danger' }} alert-dismissible fade show" role="alert">
+                        <div class="alert alert-{{ category if category != 'message' else 'danger' }} alert-dismissible fade show">
                             <i class="bi bi-exclamation-triangle-fill me-2"></i>{{ message }}
                             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                         </div>
@@ -28,7 +28,7 @@
                     <label class="form-label fw-semibold">
                         <i class="bi bi-person"></i> Username
                     </label>
-                    <input type="text" name="username" class="form-control form-control-lg" 
+                    <input type="text" name="username" class="form-control" 
                            placeholder="Enter your username" required autofocus>
                 </div>
 
@@ -38,38 +38,17 @@
                     </label>
                     <div class="input-group">
                         <input type="password" name="password" id="password" 
-                               class="form-control form-control-lg" 
-                               placeholder="Enter your password" required>
+                               class="form-control" placeholder="Enter your password" required>
                         <button class="btn btn-outline-secondary" type="button" id="togglePassword">
                             <i class="bi bi-eye"></i>
                         </button>
                     </div>
-                    <div class="text-end mt-2">
-                        <a href="#" class="text-decoration-none small">Forgot password?</a>
-                    </div>
                 </div>
 
-                <div class="mb-3 form-check">
-                    <input type="checkbox" class="form-check-input" id="rememberMe" name="remember_me">
-                    <label class="form-check-label small" for="rememberMe">Remember me for 30 days</label>
-                </div>
-
-                <button type="submit" class="btn btn-primary btn-lg w-100 btn-modern">
+                <button type="submit" class="btn btn-primary w-100 btn-modern">
                     <i class="bi bi-box-arrow-in-right"></i> Login
                 </button>
             </form>
-
-            <hr class="my-4">
-
-            <div class="text-center">
-                <p class="small text-muted mb-2">Or continue with</p>
-                <button class="btn btn-outline-secondary btn-sm mx-1" onclick="showToast('Google login coming soon!', 'info')">
-                    <i class="bi bi-google"></i> Google
-                </button>
-                <button class="btn btn-outline-secondary btn-sm mx-1" onclick="showToast('GitHub login coming soon!', 'info')">
-                    <i class="bi bi-github"></i> GitHub
-                </button>
-            </div>
 
             <p class="text-center mt-4 small">
                 Don't have an account? 
