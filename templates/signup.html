@@ -2,14 +2,18 @@
 {% block body %}
 
 <div class="container d-flex justify-content-center align-items-center" style="min-height: 90vh;">
-    <div class="card shadow-lg border-0" style="max-width: 450px; width: 100%;">
+    <div class="card shadow-lg border-0" style="max-width: 480px; width: 100%;">
         <div class="card-body p-5">
+            
+            <!-- App Name at Top -->
             <div class="text-center mb-4">
-                <div class="bg-success bg-opacity-10 rounded-circle p-3 d-inline-block mb-3">
-                    <i class="bi bi-person-plus-fill text-success fs-1"></i>
+                <div class="mb-3">
+                    <i class="bi bi-check2-square fs-1" style="color: #667eea;"></i>
                 </div>
-                <h3 class="fw-bold">Create Account</h3>
-                <p class="text-muted">Join Todo SaaS today</p>
+                <h1 class="fw-bold" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
+                    TaskForge
+                </h1>
+                <p class="text-muted mt-2">Create your account</p>
             </div>
 
             {% with messages = get_flashed_messages(with_categories=true) %}
@@ -44,23 +48,24 @@
                             <i class="bi bi-eye"></i>
                         </button>
                     </div>
-                    <!-- Password Requirements (Visible) -->
-                    <div class="mt-2 p-2 bg-light rounded" style="font-size: 0.85rem;">
+                    
+                    <!-- Password Requirements - VISIBLE BOX -->
+                    <div class="password-requirements mt-2">
                         <small class="text-muted">Password must contain:</small>
                         <div class="mt-1">
-                            <div id="req-length">
+                            <div id="req-length" class="text-muted">
                                 <i class="bi bi-circle"></i> 6-8 characters
                             </div>
-                            <div id="req-upper">
+                            <div id="req-upper" class="text-muted">
                                 <i class="bi bi-circle"></i> Uppercase letter (A-Z)
                             </div>
-                            <div id="req-lower">
+                            <div id="req-lower" class="text-muted">
                                 <i class="bi bi-circle"></i> Lowercase letter (a-z)
                             </div>
-                            <div id="req-number">
+                            <div id="req-number" class="text-muted">
                                 <i class="bi bi-circle"></i> Number (0-9)
                             </div>
-                            <div id="req-special">
+                            <div id="req-special" class="text-muted">
                                 <i class="bi bi-circle"></i> Special character (@$!%*?&)
                             </div>
                         </div>
@@ -73,17 +78,17 @@
                     </label>
                     <input type="password" name="confirm" id="confirmPassword" 
                            class="form-control" placeholder="Confirm your password" required>
-                    <div id="passwordMatchMsg" class="form-text"></div>
+                    <div id="passwordMatchMsg" class="form-text mt-1"></div>
                 </div>
 
                 <button type="submit" id="registerBtn" class="btn btn-success w-100 btn-modern" disabled>
-                    <i class="bi bi-check-circle"></i> Register
+                    <i class="bi bi-check-circle"></i> Create Account
                 </button>
             </form>
 
             <p class="text-center mt-4 small">
                 Already have an account? 
-                <a href="/login" class="text-success fw-semibold text-decoration-none">Login here</a>
+                <a href="/login" class="text-decoration-none fw-semibold">Sign in</a>
             </p>
         </div>
     </div>
@@ -152,6 +157,7 @@ function updateRegisterButton() {
     document.getElementById('registerBtn').disabled = !(isPasswordValid && doPasswordsMatch && isUsernameValid);
 }
 
+// Toggle password visibility
 document.getElementById('togglePassword').addEventListener('click', function() {
     const passwordInput = document.getElementById('password');
     const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
@@ -160,9 +166,25 @@ document.getElementById('togglePassword').addEventListener('click', function() {
     this.querySelector('i').classList.toggle('bi-eye-slash');
 });
 
+// Event listeners
 document.getElementById('password').addEventListener('input', updateRegisterButton);
 document.getElementById('confirmPassword').addEventListener('input', updateRegisterButton);
 document.querySelector('input[name="username"]').addEventListener('input', updateRegisterButton);
+
+// Username validation on input
+document.querySelector('input[name="username"]').addEventListener('input', function(e) {
+    const username = e.target.value;
+    if (username && !/^[A-Za-z0-9]+$/.test(username)) {
+        this.setCustomValidity('Username can only contain letters and numbers');
+        this.style.borderColor = '#dc3545';
+    } else if (username.length < 3 && username.length > 0) {
+        this.setCustomValidity('Username must be at least 3 characters');
+        this.style.borderColor = '#dc3545';
+    } else {
+        this.setCustomValidity('');
+        this.style.borderColor = '#198754';
+    }
+});
 
 updateRegisterButton();
 </script>
