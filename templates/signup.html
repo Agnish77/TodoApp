@@ -2,7 +2,7 @@
 {% block body %}
 
 <div class="container d-flex justify-content-center align-items-center" style="min-height: 90vh;">
-    <div class="card shadow-lg border-0" style="max-width: 450px; width: 100%; border-radius: 20px;" data-aos="fade-up">
+    <div class="card shadow-lg border-0" style="max-width: 450px; width: 100%;">
         <div class="card-body p-5">
             <div class="text-center mb-4">
                 <div class="bg-success bg-opacity-10 rounded-circle p-3 d-inline-block mb-3">
@@ -15,7 +15,7 @@
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
                     {% for category, message in messages %}
-                        <div class="alert alert-{{ category if category != 'message' else 'danger' }} alert-dismissible fade show" role="alert">
+                        <div class="alert alert-{{ category if category != 'message' else 'danger' }} alert-dismissible fade show">
                             <i class="bi bi-exclamation-triangle-fill me-2"></i>{{ message }}
                             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                         </div>
@@ -28,9 +28,8 @@
                     <label class="form-label fw-semibold">
                         <i class="bi bi-person"></i> Username
                     </label>
-                    <input type="text" name="username" class="form-control form-control-lg" 
-                           placeholder="Choose a username" required minlength="3" maxlength="20"
-                           pattern="[A-Za-z0-9]+" title="Only letters and numbers allowed">
+                    <input type="text" name="username" class="form-control" 
+                           placeholder="Choose a username" required minlength="3" maxlength="20">
                     <div class="form-text">3-20 characters, letters and numbers only</div>
                 </div>
 
@@ -39,28 +38,29 @@
                         <i class="bi bi-lock"></i> Password
                     </label>
                     <div class="input-group">
-                        <input type="password" name="password" id="password" class="form-control form-control-lg" 
+                        <input type="password" name="password" id="password" class="form-control" 
                                placeholder="Create a strong password" required>
                         <button class="btn btn-outline-secondary" type="button" id="togglePassword">
                             <i class="bi bi-eye"></i>
                         </button>
                     </div>
-                    <div class="mt-2" id="passwordRequirements">
+                    <!-- Password Requirements (Visible) -->
+                    <div class="mt-2 p-2 bg-light rounded" style="font-size: 0.85rem;">
                         <small class="text-muted">Password must contain:</small>
-                        <div class="small mt-1">
-                            <div id="req-length" class="text-muted">
+                        <div class="mt-1">
+                            <div id="req-length">
                                 <i class="bi bi-circle"></i> 6-8 characters
                             </div>
-                            <div id="req-upper" class="text-muted">
+                            <div id="req-upper">
                                 <i class="bi bi-circle"></i> Uppercase letter (A-Z)
                             </div>
-                            <div id="req-lower" class="text-muted">
+                            <div id="req-lower">
                                 <i class="bi bi-circle"></i> Lowercase letter (a-z)
                             </div>
-                            <div id="req-number" class="text-muted">
+                            <div id="req-number">
                                 <i class="bi bi-circle"></i> Number (0-9)
                             </div>
-                            <div id="req-special" class="text-muted">
+                            <div id="req-special">
                                 <i class="bi bi-circle"></i> Special character (@$!%*?&)
                             </div>
                         </div>
@@ -72,12 +72,11 @@
                         <i class="bi bi-shield-lock"></i> Confirm Password
                     </label>
                     <input type="password" name="confirm" id="confirmPassword" 
-                           class="form-control form-control-lg" 
-                           placeholder="Confirm your password" required>
+                           class="form-control" placeholder="Confirm your password" required>
                     <div id="passwordMatchMsg" class="form-text"></div>
                 </div>
 
-                <button type="submit" id="registerBtn" class="btn btn-success btn-lg w-100 btn-modern" disabled>
+                <button type="submit" id="registerBtn" class="btn btn-success w-100 btn-modern" disabled>
                     <i class="bi bi-check-circle"></i> Register
                 </button>
             </form>
@@ -137,11 +136,9 @@ function checkPasswordsMatch() {
     
     if (password === confirm) {
         matchMsg.innerHTML = '<i class="bi bi-check-circle-fill text-success"></i> Passwords match!';
-        matchMsg.className = 'text-success';
         return true;
     } else {
         matchMsg.innerHTML = '<i class="bi bi-x-circle-fill text-danger"></i> Passwords do not match';
-        matchMsg.className = 'text-danger';
         return false;
     }
 }
