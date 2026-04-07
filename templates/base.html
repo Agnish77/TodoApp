@@ -12,10 +12,7 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 
 <!-- Google Fonts -->
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-
-<!-- AOS Animation -->
-<link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
 <style>
 * {
@@ -31,20 +28,44 @@ body {
     transition: all 0.3s ease;
 }
 
+/* Light Mode (Default) */
+body:not(.dark-mode) {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #1e293b;
+}
+
+body:not(.dark-mode) .card {
+    background: white !important;
+    color: #1e293b !important;
+}
+
+body:not(.dark-mode) .navbar {
+    background: white !important;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+body:not(.dark-mode) .navbar .navbar-brand,
+body:not(.dark-mode) .navbar .nav-link {
+    color: #4f46e5 !important;
+}
+
+/* Dark Mode */
 .dark-mode {
     background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
     color: #f1f5f9;
 }
 
-.dark-mode .card,
-.dark-mode .navbar,
-.dark-mode .modal-content {
+.dark-mode .card {
     background: #1e293b !important;
     color: #f1f5f9 !important;
+    border-color: #334155;
 }
 
-.dark-mode .form-control,
-.dark-mode .input-group-text {
+.dark-mode .navbar {
+    background: #0f172a !important;
+}
+
+.dark-mode .form-control {
     background: #334155;
     border-color: #475569;
     color: #f1f5f9;
@@ -59,108 +80,76 @@ body {
     color: #94a3b8 !important;
 }
 
+/* Navbar Styles */
 .navbar {
-    background: rgba(255, 255, 255, 0.98);
-    backdrop-filter: blur(10px);
-    box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
+    background: white;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    padding: 1rem 0;
 }
 
-.dark-mode .navbar {
-    background: rgba(30, 41, 59, 0.98);
+.navbar-brand {
+    font-size: 1.5rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
 }
 
-.todo-card {
+/* Card Styles */
+.card {
     border: none;
     border-radius: 16px;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    cursor: pointer;
-    position: relative;
-    overflow: hidden;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
 
-.todo-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+.card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.15);
 }
 
-.todo-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 4px;
-    background: linear-gradient(90deg, #667eea, #764ba2);
-}
-
+/* Button Styles */
 .btn-modern {
     border-radius: 10px;
-    padding: 8px 20px;
+    padding: 10px 24px;
     font-weight: 500;
     transition: all 0.3s ease;
 }
 
 .btn-modern:hover {
     transform: translateY(-2px);
-    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.2);
 }
 
-.stats-card {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border-radius: 16px;
-    padding: 20px;
-    color: white;
-    text-align: center;
-    transition: transform 0.3s ease;
-}
-
-.stats-card:hover {
-    transform: translateY(-5px);
-}
-
-.dark-mode .stats-card {
-    background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
-}
-
-.animate-fade-in {
-    animation: fadeIn 0.5s ease-in;
-}
-
-@keyframes fadeIn {
-    from {
-        opacity: 0;
-        transform: translateY(20px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-.completed-task {
-    opacity: 0.7;
-    text-decoration: line-through;
-}
-
-.badge-priority {
-    font-size: 0.7rem;
-    padding: 4px 8px;
-    border-radius: 20px;
-}
-
-.search-box {
-    border-radius: 50px;
-    padding: 12px 20px;
+/* Alert Styles */
+.alert {
+    border-radius: 12px;
     border: none;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
 }
 
-.toast-custom {
+/* Dropdown Styles */
+.dropdown-menu {
+    border-radius: 12px;
+    border: none;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+}
+
+.dropdown-item:hover {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+/* Toast Container */
+#toast-container {
     position: fixed;
     bottom: 20px;
     right: 20px;
     z-index: 9999;
+}
+
+.toast-custom {
     animation: slideInRight 0.3s ease;
+    border-radius: 12px;
 }
 
 @keyframes slideInRight {
@@ -183,44 +172,13 @@ body {
 <!-- Scripts -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
-<script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
 
 <script>
-AOS.init({
-    duration: 800,
-    once: true
-});
-
+// Dark mode toggle
 function toggleDark() {
     document.body.classList.toggle("dark-mode");
     localStorage.setItem('darkMode', document.body.classList.contains('dark-mode'));
-    
-    // Show toast notification
-    showToast('Dark mode toggled!', 'info');
-}
-
-function showToast(message, type = 'success') {
-    const toastContainer = document.getElementById('toast-container') || createToastContainer();
-    const toast = document.createElement('div');
-    toast.className = `toast-custom alert alert-${type} alert-dismissible fade show`;
-    toast.innerHTML = `
-        <i class="bi bi-${type === 'success' ? 'check-circle' : 'info-circle'} me-2"></i>
-        ${message}
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    `;
-    toastContainer.appendChild(toast);
-    setTimeout(() => toast.remove(), 3000);
-}
-
-function createToastContainer() {
-    const container = document.createElement('div');
-    container.id = 'toast-container';
-    container.style.position = 'fixed';
-    container.style.bottom = '20px';
-    container.style.right = '20px';
-    container.style.zIndex = '9999';
-    document.body.appendChild(container);
-    return container;
+    showToast('Dark mode ' + (document.body.classList.contains('dark-mode') ? 'enabled' : 'disabled'), 'info');
 }
 
 // Load dark mode preference
@@ -228,11 +186,42 @@ if (localStorage.getItem('darkMode') === 'true') {
     document.body.classList.add('dark-mode');
 }
 
+// Toast notification function
+function showToast(message, type = 'success') {
+    let container = document.getElementById('toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        document.body.appendChild(container);
+    }
+    
+    const toast = document.createElement('div');
+    toast.className = `toast-custom alert alert-${type} alert-dismissible fade show`;
+    toast.innerHTML = `
+        <i class="bi bi-${type === 'success' ? 'check-circle' : 'info-circle'} me-2"></i>
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    container.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
+}
+
 // Real-time updates
 const socket = io();
 socket.on("todo_update", function() {
     showToast('Tasks updated in real-time!', 'info');
     setTimeout(() => location.reload(), 1000);
+});
+
+// Form loading states
+document.querySelectorAll('form').forEach(form => {
+    form.addEventListener('submit', function() {
+        const btn = this.querySelector('button[type="submit"]');
+        if (btn && !btn.disabled) {
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Loading...';
+        }
+    });
 });
 </script>
 </body>
