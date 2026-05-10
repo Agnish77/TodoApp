@@ -54,7 +54,7 @@
                         <small class="text-muted">Password must contain:</small>
                         <div class="mt-1">
                             <div id="req-length" class="text-muted">
-                                <i class="bi bi-circle"></i> 6-8 characters
+                                <i class="bi bi-circle"></i> More than 6 characters
                             </div>
                             <div id="req-upper" class="text-muted">
                                 <i class="bi bi-circle"></i> At least an Uppercase letter (A-Z)
@@ -66,7 +66,7 @@
                                 <i class="bi bi-circle"></i> At least one Number (0-9)
                             </div>
                             <div id="req-special" class="text-muted">
-                                <i class="bi bi-circle"></i> At least one Special character (@$!%*?&)
+                                <i class="bi bi-circle"></i> At least one Special character (@$!%*?&#)
                             </div>
                         </div>
                     </div>
@@ -97,11 +97,11 @@
 <script>
 function validatePassword(password) {
     return {
-        length: password.length >= 6 && password.length <= 8,
+        length: password.length >= 6,
         upper: /[A-Z]/.test(password),
         lower: /[a-z]/.test(password),
         number: /[0-9]/.test(password),
-        special: /[@$!%*?&]/.test(password)
+        special: /[@$!%*?&#]/.test(password)
     };
 }
 
