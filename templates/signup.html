@@ -121,11 +121,11 @@ function updatePasswordUI() {
         }
     };
     
-    updateReq('req-length', req.length, '6-8 characters');
+    updateReq('req-length', req.length, 'more than 6 characters');
     updateReq('req-upper', req.upper, 'Uppercase letter (A-Z)');
     updateReq('req-lower', req.lower, 'Lowercase letter (a-z)');
     updateReq('req-number', req.number, 'Number (0-9)');
-    updateReq('req-special', req.special, 'Special character (@$!%*?&)');
+    updateReq('req-special', req.special, 'Special character (@$!%*?#&)');
     
     return Object.values(req).every(v => v === true);
 }
